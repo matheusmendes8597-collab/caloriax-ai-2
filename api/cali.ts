@@ -9,7 +9,7 @@ export const config = {
 declare const process: any;
 
 export default async function handler(req: any, res: any) {
-  // 🔥 CORS (essencial)
+  // 🔥 CORS
   const setCors = () => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -27,14 +27,18 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { message, user, analyses } = req.body || {};
+    // ✅ PEGAR DADOS
+    const body = req.body || {};
+    const message = body.message;
+    const user = body.user;
+    const analyses = body.analyses;
 
     if (!message) {
       return res.status(400).json({ error: "Mensagem é obrigatória" });
     }
 
     // =========================
-    // 🧠 CONTEXTO DO USUÁRIO
+    // 🧠 CONTEXTO
     // =========================
 
     const hasAnalyses = analyses && analyses.length > 0;
@@ -61,38 +65,25 @@ ${analyses
       : `Nenhuma refeição registrada recentemente.`;
 
     // =========================
-    // 🤖 PROMPT DO CALI (OTIMIZADO)
+    // 🤖 PROMPT (CALI)
     // =========================
 
     const prompt = `
 Você é o Cali, o nutricionista virtual da Caloriax IA.
 
-FORMA DE SE APRESENTAR:
-- Se apresente apenas na primeira interação:
-"Oi! Eu sou o Cali, seu nutricionista da Caloriax IA 😉"
+Se apresente apenas na primeira interação:
+"Oi! Eu sou o Cali, seu nutricionista inteligente 😉"
 
-COMPORTAMENTO:
+REGRAS:
+- Fale em português do Brasil
+- Seja direto e claro
+- Respostas curtas (máx 5 linhas)
+- Use no máximo 2 emojis
+- Use **negrito** em pontos importantes
 
-- Fale sempre em português do Brasil.
-- Seja direto, claro e útil.
-- Respostas curtas (máx. 5 linhas).
-- Use no máximo 2 emojis quando fizer sentido.
-- Destaque pontos importantes com **negrito**.
+Você só fala sobre alimentação, dieta e calorias.
 
-ESPECIALIDADE:
-
-Você é especialista em:
-- alimentação
-- dieta
-- calorias
-- emagrecimento
-- ganho de massa
-- hábitos alimentares
-
-Você NÃO pode falar sobre outros assuntos.
-
-Se o usuário sair do tema:
-Responda:
+Se fugir do tema:
 "Posso te ajudar com sua alimentação e dieta. Quer melhorar sua alimentação hoje? 😉"
 
 ---
@@ -102,39 +93,27 @@ ${userContext}
 
 ---
 
-CONTEXTO ALIMENTAR:
+CONTEXTO:
 ${analysesContext}
 
 ---
 
-REGRAS IMPORTANTES:
+INSTRUÇÕES:
 
-1. Se houver dados do usuário:
-- Use o nome naturalmente
+- Use o nome do usuário se existir
 - Considere o objetivo
-
-2. Se houver refeições:
-- Analise o consumo
-- Diga se está alto, baixo ou equilibrado
+- Analise o dia se houver refeições
+- Se não houver dados, não invente
 - Dê sugestões simples
-
-3. Se NÃO houver dados suficientes:
-- NÃO invente
-- Dê orientação geral
-
-4. Se for alimento específico:
-- Avalie baseado no objetivo e equilíbrio
-
-5. Nunca fuja do tema alimentação
 
 ---
 
-Pergunta do usuário:
+Pergunta:
 "${message}"
 `;
 
     // =========================
-    // 🔥 CHAMADA OPENAI
+    // 🔥 OPENAI
     // =========================
 
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -152,7 +131,6 @@ Pergunta do usuário:
     const data = await response.json();
 
     if (!response.ok) {
-      setCors();
       return res.status(500).json({
         error: "Erro OpenAI",
         details: data,
@@ -160,7 +138,7 @@ Pergunta do usuário:
     }
 
     // =========================
-    // 🧾 EXTRAIR RESPOSTA
+    // 🧾 RESPOSTA
     // =========================
 
     const result =
@@ -170,13 +148,11 @@ Pergunta do usuário:
           o.content?.map((c: any) => c.text).join("")
         )
         .join("") ||
-      "Não consegui responder agora.";
+      "Erro ao responder.";
 
-    setCors();
     return res.status(200).json({ result });
 
   } catch (error: any) {
-    setCors();
     return res.status(500).json({
       error: "Erro geral",
       details: error.message,
