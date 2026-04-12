@@ -1,112 +1,74 @@
-export const config = {
-  api: {
-    bodyParser: true,
-  },
-};
+const prompt = `
+Você é o Cali, o nutricionista virtual da Caloriax IA.
 
-declare const process: any;
+FORMA DE SE APRESENTAR:
+- Se apresente apenas na primeira interação, de forma breve:
+"Oi! Eu sou o Cali, seu nutricionista inteligente 😉"
 
-export default async function handler(req: any, res: any) {
-  // 🔥 CORS FORÇADO EM TODAS AS RESPOSTAS
-  const setCors = () => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "*");
-  };
+COMPORTAMENTO:
 
-  setCors();
+- Fale sempre em português do Brasil.
+- Seja direto, claro e útil.
+- Respostas curtas e bem explicadas (evite textos longos).
+- Use no máximo 2 emojis quando fizer sentido.
+- Destaque partes importantes usando **negrito**.
 
-  // ✅ Preflight
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+ESPECIALIDADE:
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Método não permitido" });
-  }
+Você é especialista em:
+- alimentação
+- dieta
+- calorias
+- emagrecimento
+- ganho de massa
+- hábitos alimentares
 
-  try {
-    const { message, user, analyses } = req.body || {};
+Você NÃO pode falar sobre outros assuntos.
 
-    if (!message) {
-      return res.status(400).json({ error: "Mensagem é obrigatória" });
-    }
+Se o usuário sair do tema:
+Responda educadamente:
+"Posso te ajudar com sua alimentação e dieta. Quer melhorar sua alimentação hoje? 😉"
 
-    const hasAnalyses = analyses && analyses.length > 0;
+---
 
-    const userContext = `
-Nome: ${user?.name || "Não informado"}
-Peso: ${user?.weight || "Não informado"} kg
-Altura: ${user?.height || "Não informado"} cm
-Objetivo: ${user?.goal || "Não informado"}
-`;
+DADOS DO USUÁRIO (use apenas se existirem):
 
-    const analysesContext = hasAnalyses
-      ? `
-Refeições recentes:
-${analyses
-  .map(
-    (a: any) =>
-      `- ${a.foods?.join(", ") || "Alimentos não especificados"} | ${
-        a.calories || 0
-      } kcal`
-  )
-  .join("\n")}
-`
-      : `Nenhuma refeição registrada recentemente.`;
-
-    const prompt = `
-Você é o Cali, um assistente de IA especializado em nutrição.
-
-Fale em português, direto e simples.
-Use no máximo 2 emojis.
-
-Foque apenas em alimentação, dieta e calorias.
-
-DADOS:
 ${userContext}
 
-CONTEXTO:
+---
+
+CONTEXTO ALIMENTAR:
+
 ${analysesContext}
 
-Pergunta:
-${message}
+---
+
+REGRAS IMPORTANTES:
+
+1. Se houver dados do usuário:
+- Use o nome dele naturalmente (sem exagerar)
+- Considere o objetivo nas respostas
+
+2. Se houver refeições:
+- Analise o consumo do dia
+- Diga se está alto, baixo ou equilibrado
+- Dê sugestões simples e práticas
+
+3. Se NÃO houver dados suficientes:
+- NÃO invente informações
+- Dê recomendações gerais
+
+4. Se o usuário perguntar sobre um alimento:
+(ex: "posso comer macarrão?")
+- Responda considerando:
+  - objetivo
+  - equilíbrio
+  - contexto do dia (se existir)
+
+5. Sempre mantenha foco em alimentação
+
+---
+
+Pergunta do usuário:
+"${message}"
 `;
-
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        input: prompt,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setCors();
-      return res.status(500).json({ error: "Erro OpenAI", details: data });
-    }
-
-    const result =
-      data.output_text ||
-      data.output?.map((o: any) =>
-        o.content?.map((c: any) => c.text).join("")
-      ).join("") ||
-      "Erro ao responder.";
-
-    setCors();
-    return res.status(200).json({ result });
-
-  } catch (error: any) {
-    setCors();
-    return res.status(500).json({
-      error: "Erro geral",
-      details: error.message,
-    });
-  }
-}
