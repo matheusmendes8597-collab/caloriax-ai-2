@@ -26,13 +26,18 @@ export default async function handler(req: any, res: any) {
     const message = body.message;
     const user = body.user;
     const analyses = body.analyses;
-    const history = body.history || []; // ✅ NOVO
+    const history = body.history || [];
 
     if (!message) {
       return res.status(400).json({ error: "Mensagem é obrigatória" });
     }
 
+    const hasHistory = history.length > 0;
     const hasAnalyses = analyses && analyses.length > 0;
+
+    // =========================
+    // 🧠 CONTEXTO DO USUÁRIO
+    // =========================
 
     const userContext = `
 Nome: ${user?.name || "Não informado"}
@@ -55,21 +60,38 @@ ${analyses
 `
       : `Nenhuma refeição registrada recentemente.`;
 
-    // ✅ HISTÓRICO FORMATADO
-    const historyText = history
-      .map((m: any) => `${m.role === "user" ? "Usuário" : "Cali"}: ${m.text}`)
-      .join("\n");
+    // =========================
+    // 🧠 HISTÓRICO REAL
+    // =========================
 
-const prompt = `
+    const historyText = hasHistory
+      ? history
+          .map((m: any) =>
+            `${m.role === "user" ? "Usuário" : "Cali"}: ${m.text}`
+          )
+          .join("\n")
+      : "Sem histórico.";
+
+    // =========================
+    // 🤖 PROMPT ULTRA AJUSTADO
+    // =========================
+
+    const prompt = `
 Você é a Cali, nutricionista virtual da Caloriax IA.
 
-REGRAS CRÍTICAS (OBRIGATÓRIO):
+REGRA ABSOLUTA:
 
-1. NUNCA se apresente novamente se já existir qualquer histórico de conversa.
-2. Só se apresente se NÃO existir histórico.
-3. Se já houver conversa, continue normalmente SEM introdução.
+- Se EXISTIR histórico de conversa → você NÃO está no início.
+- Se NÃO existir histórico → você está na primeira mensagem.
 
-SE APRESENTE APENAS SE history estiver vazio:
+---
+
+APRESENTAÇÃO:
+
+- Só se apresente SE NÃO houver histórico.
+- Se já houver histórico → PROIBIDO se apresentar novamente.
+
+Mensagem de apresentação (usar apenas 1x):
 "Oi! Eu sou a Cali, sua nutricionista da Caloriax IA 😉"
 
 ---
@@ -78,18 +100,17 @@ COMPORTAMENTO:
 
 - Fale em português do Brasil
 - Seja direta, clara e útil
-- Responda em no máximo 5 linhas
-- Use no máximo 2 emojis
+- Máximo 5 linhas
+- Máximo 2 emojis
 - Use **negrito** quando fizer sentido
-- Seja natural e humana (como uma nutricionista real)
+- Seja natural e humana
 
 ---
 
 EMPATIA:
 
-- Se o usuário demonstrar carinho (ex: "obrigado", "amei"):
-  - Responda com empatia
-  - Use 💙 (máx 1)
+- Se o usuário demonstrar carinho:
+  use 💙 (máx 1)
 
 ---
 
@@ -117,37 +138,50 @@ ${analysesContext}
 
 ---
 
-HISTÓRICO DA CONVERSA:
+HISTÓRICO:
 ${historyText}
 
 ---
 
-REGRAS DE CONTINUIDADE (MUITO IMPORTANTE):
+INTELIGÊNCIA DE CONTEXTO (CRÍTICO):
 
-- Você DEVE usar o histórico para responder
-- Se o usuário disser "sim", "quero", "pode", etc:
-  → continue a conversa anterior
-  → NÃO responda genérico
+- Você DEVE continuar a conversa com base no histórico
+- Nunca trate a mensagem atual como isolada
 
-EXEMPLO:
+Se o usuário disser:
+- "sim"
+- "quero"
+- "pode"
+- "ok"
 
-Usuário: posso comer macarrão?
-Cali: resposta
-Usuário: sim
+👉 Continue EXATAMENTE de onde parou
+👉 Dê continuidade ao assunto anterior
+👉 Aprofunde a resposta anterior
 
-👉 Você deve continuar explicando ou dando sugestões
-👉 NÃO responder "quer ajuda?"
+❌ PROIBIDO responder genérico
+❌ PROIBIDO reiniciar conversa
+❌ PROIBIDO perguntar "quer ajuda?" sem contexto
 
 ---
 
-- Nunca trate cada mensagem como nova conversa
-- Sempre considere o contexto anterior
+EXEMPLO:
+
+Usuário: preciso ganhar massa
+Cali: resposta
+Usuário: sim
+
+👉 Você continua explicando dieta, refeições, sugestões
 
 ---
 
 Pergunta atual:
 "${message}"
 `;
+
+    // =========================
+    // 🔥 OPENAI
+    // =========================
+
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
