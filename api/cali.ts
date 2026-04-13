@@ -188,10 +188,28 @@ Pergunta atual:
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        input: prompt,
-      }),
+body: JSON.stringify({
+  model: "gpt-4o-mini",
+
+  input: [
+    {
+      role: "system",
+      content: prompt
+    },
+
+    // ✅ histórico REAL (isso muda tudo)
+    ...history.map((m: any) => ({
+      role: m.role === "user" ? "user" : "assistant",
+      content: m.text
+    })),
+
+    // ✅ mensagem atual
+    {
+      role: "user",
+      content: message
+    }
+  ]
+}),
     });
 
     const data = await response.json();
