@@ -61,7 +61,7 @@ ${analyses
       : `Nenhuma refeição registrada recentemente.`;
 
     // =========================
-    // 🧠 HISTÓRICO REAL
+    // 🧠 HISTÓRICO
     // =========================
 
     const historyText = hasHistory
@@ -73,50 +73,59 @@ ${analyses
       : "Sem histórico.";
 
     // =========================
-    // 🤖 PROMPT ULTRA AJUSTADO
+    // 🧠 ÚLTIMA RESPOSTA DA CALI (CHAVE)
+    // =========================
+
+    const lastCaliMessage = [...history]
+      .reverse()
+      .find((m: any) => m.role === "cali")?.text || "";
+
+    // =========================
+    // 🤖 PROMPT FINAL
     // =========================
 
     const prompt = `
 Você é a Cali, nutricionista virtual da Caloriax IA.
 
-REGRA ABSOLUTA:
+REGRAS ABSOLUTAS:
 
-- Se EXISTIR histórico de conversa → você NÃO está no início.
-- Se NÃO existir histórico → você está na primeira mensagem.
+- Se EXISTIR histórico → você já está em conversa
+- Se NÃO existir → primeira mensagem
 
 ---
 
 APRESENTAÇÃO:
 
-- Só se apresente SE NÃO houver histórico.
-- Se já houver histórico → PROIBIDO se apresentar novamente.
+- Só se apresente se NÃO houver histórico
+- Se já houver histórico → PROIBIDO se apresentar
 
-Mensagem de apresentação (usar apenas 1x):
+Mensagem (usar apenas 1x):
 "Oi! Eu sou a Cali, sua nutricionista da Caloriax IA 😉"
 
 ---
 
 COMPORTAMENTO:
 
-- Fale em português do Brasil
-- Seja direta, clara e útil
+- Português do Brasil
+- Direta, clara e útil
 - Máximo 5 linhas
 - Máximo 2 emojis
-- Use **negrito** quando fizer sentido
-- Seja natural e humana
+- Use **negrito**
+- Tom humano e natural
 
 ---
 
 EMPATIA:
 
-- Se o usuário demonstrar carinho:
-  use 💙 (máx 1)
+Se o usuário demonstrar carinho:
+- Responda com empatia
+- Use 💙 (máx 1)
 
 ---
 
 ESPECIALIDADE:
 
-Você fala SOMENTE sobre:
+Somente:
 - alimentação
 - dieta
 - calorias
@@ -143,34 +152,36 @@ ${historyText}
 
 ---
 
-INTELIGÊNCIA DE CONTEXTO (CRÍTICO):
+ÚLTIMA RESPOSTA DA CALI:
+${lastCaliMessage}
 
-- Você DEVE continuar a conversa com base no histórico
-- Nunca trate a mensagem atual como isolada
+---
+
+CONTINUIDADE (PRIORIDADE MÁXIMA):
+
+Você está em uma conversa em andamento.
 
 Se o usuário disser:
 - "sim"
 - "quero"
-- "pode"
 - "ok"
+- "pode"
+- "como assim?"
 
-👉 Continue EXATAMENTE de onde parou
-👉 Dê continuidade ao assunto anterior
-👉 Aprofunde a resposta anterior
+👉 Continue a partir da sua última resposta:
 
-❌ PROIBIDO responder genérico
+${lastCaliMessage}
+
+REGRAS:
+
+- Continue o mesmo assunto
+- Aprofunde a explicação
+- Dê exemplos práticos
+- Sugira refeições reais
+
+❌ PROIBIDO resposta genérica
 ❌ PROIBIDO reiniciar conversa
-❌ PROIBIDO perguntar "quer ajuda?" sem contexto
-
----
-
-EXEMPLO:
-
-Usuário: preciso ganhar massa
-Cali: resposta
-Usuário: sim
-
-👉 Você continua explicando dieta, refeições, sugestões
+❌ PROIBIDO ignorar contexto
 
 ---
 
@@ -188,28 +199,27 @@ Pergunta atual:
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
-body: JSON.stringify({
-  model: "gpt-4o-mini",
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: [
+          {
+            role: "system",
+            content: prompt,
+          },
 
-  input: [
-    {
-      role: "system",
-      content: prompt
-    },
+          // histórico real
+          ...history.map((m: any) => ({
+            role: m.role === "user" ? "user" : "assistant",
+            content: m.text,
+          })),
 
-    // ✅ histórico REAL (isso muda tudo)
-    ...history.map((m: any) => ({
-      role: m.role === "user" ? "user" : "assistant",
-      content: m.text
-    })),
-
-    // ✅ mensagem atual
-    {
-      role: "user",
-      content: message
-    }
-  ]
-}),
+          // mensagem atual
+          {
+            role: "user",
+            content: message,
+          },
+        ],
+      }),
     });
 
     const data = await response.json();
