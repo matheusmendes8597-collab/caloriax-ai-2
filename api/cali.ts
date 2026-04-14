@@ -36,6 +36,36 @@ export default async function handler(req: any, res: any) {
     const hasAnalyses = analyses && analyses.length > 0;
 
     // =========================
+    // ✅ DETECÇÃO DE SAUDAÇÃO + HORÁRIO (ADICIONADO)
+    // =========================
+
+    const normalized = message.toLowerCase().trim();
+
+    const greetings = [
+      "oi", "olá", "ola", "opa", "eae", "e aí",
+      "bom dia", "boa tarde", "boa noite"
+    ];
+
+    const isGreeting = greetings.includes(normalized);
+
+    const now = new Date();
+    const hour = now.getHours();
+
+    let greetingText = "";
+
+    if (hour >= 5 && hour < 12) {
+      greetingText = "Bom dia ☀️ Que bom te ver de novo! Como posso te ajudar hoje?";
+    } else if (hour >= 12 && hour < 18) {
+      greetingText = "Boa tarde 🌤️ Que bom te ver de novo! Como posso te ajudar hoje?";
+    } else {
+      greetingText = "Boa noite 🌙 Tudo bem? Quer continuar de onde paramos?";
+    }
+
+    if (isGreeting && hasHistory) {
+      return res.status(200).json({ result: greetingText });
+    }
+
+    // =========================
     // 👤 CONTEXTO DO USUÁRIO
     // =========================
 
