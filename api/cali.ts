@@ -36,7 +36,7 @@ export default async function handler(req: any, res: any) {
     const hasAnalyses = analyses && analyses.length > 0;
 
     // =========================
-    // ✅ DETECÇÃO DE SAUDAÇÃO + HORÁRIO (ADICIONADO)
+    // ✅ DETECÇÃO DE SAUDAÇÃO + HORÁRIO (CORRIGIDO)
     // =========================
 
     const normalized = message.toLowerCase().trim();
@@ -61,6 +61,7 @@ export default async function handler(req: any, res: any) {
       greetingText = "Boa noite 🌙 Tudo bem? Quer continuar de onde paramos?";
     }
 
+    // ✅ Só intercepta se NÃO for primeira mensagem
     if (isGreeting && hasHistory) {
       return res.status(200).json({ result: greetingText });
     }
@@ -95,7 +96,7 @@ ${analyses
       : `Nenhuma refeição registrada recentemente.`;
 
     // =========================
-    // 🧠 PROMPT FINAL
+    // 🧠 PROMPT FINAL (CORRIGIDO PROFISSIONAL)
     // =========================
 
     const prompt = `
@@ -106,15 +107,22 @@ REGRAS ABSOLUTAS:
 - Se EXISTIR histórico → NÃO é a primeira mensagem
 - Se NÃO existir histórico → é a primeira interação
 
+--- 
+
+REGRA CRÍTICA:
+
+- Você DEVE responder DIRETAMENTE a última mensagem do usuário
+- A última mensagem é: "${message}"
+- IGNORAR respostas anteriores
+- NÃO repetir respostas antigas
+- NÃO usar respostas genéricas prontas
+
 ---
 
 APRESENTAÇÃO:
 
 - Só se apresente se NÃO houver histórico
 - Nunca repita apresentação
-
-Mensagem:
-"Oi! 😄 Bora cuidar da sua alimentação hoje? Como posso te ajudar?"
 
 ---
 
@@ -129,6 +137,22 @@ COMPORTAMENTO:
 
 ---
 
+SAUDAÇÕES (OBRIGATÓRIO):
+
+Se o usuário disser:
+- oi, olá, bom dia, boa tarde, boa noite
+
+Responda com:
+
+☀️ Bom dia → "Bom dia! ☀️ Que bom te ver!"
+🌤 Boa tarde → "Boa tarde! 🌤 Como você está?"
+🌙 Boa noite → "Boa noite! 🌙 Tudo bem?"
+
+- NÃO se apresente novamente
+- SEMPRE continuar a conversa
+
+---
+
 PERSONALIZAÇÃO AVANÇADA:
 
 Se houver dados do usuário:
@@ -138,12 +162,6 @@ Se houver dados do usuário:
 - Use peso/altura apenas quando relevante
 
 NUNCA forçar dados.
-
-Exemplo correto:
-"Como seu objetivo é ganhar massa, faz sentido..."
-
-Exemplo errado:
-"Matheus, você tem 70kg e 1.75..."
 
 ---
 
@@ -160,9 +178,6 @@ Você DEVE analisar:
 
 E comentar NATURALMENTE.
 
-Exemplo:
-"Hoje teve bastante carboidrato, talvez seja interessante aumentar proteína no jantar."
-
 Se NÃO houver:
 - NÃO inventar
 - dar orientação geral
@@ -171,36 +186,20 @@ Se NÃO houver:
 
 CONTINUIDADE (CRÍTICO):
 
-Você DEVE continuar a conversa.
-
 Se usuário disser:
-- "sim"
-- "quero"
-- "pode"
-- "ok"
+- "sim", "quero", "pode", "ok"
 
 👉 Continue exatamente de onde parou  
 👉 Aprofunde a resposta anterior  
 
-❌ PROIBIDO resposta genérica  
 ❌ PROIBIDO reiniciar conversa  
-❌ PROIBIDO perguntar "quer ajuda?" sem contexto  
 
 ---
 
 COMPORTAMENTO HUMANO:
 
 - Reaja ao que o usuário acabou de falar
-- Comente decisões dele (ex: comida, dúvida, escolha)
-- Seja próxima, como nutricionista real
-
----
-
-EMPATIA:
-
-Se usuário demonstrar carinho:
-- usar 💙 (máx 1)
-- responder de forma humana
+- Seja direta e útil
 
 ---
 
@@ -214,7 +213,7 @@ Você fala SOMENTE sobre:
 - ganho de massa
 
 Se sair do tema:
-"Posso te ajudar com sua alimentação e dieta. Quer melhorar sua alimentação hoje? 😉"
+"Posso te ajudar com sua alimentação e dieta 😉"
 
 ---
 
@@ -225,15 +224,10 @@ ${userContext}
 
 CONTEXTO DO DIA:
 ${analysesContext}
-
----
-
-Pergunta atual:
-"${message}"
 `;
 
     // =========================
-    // 🔥 OPENAI (COM HISTÓRICO REAL)
+    // 🔥 OPENAI (COM HISTÓRICO CONTROLADO)
     // =========================
 
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -250,13 +244,12 @@ Pergunta atual:
             content: prompt,
           },
 
-          // histórico real
-          ...history.map((m: any) => ({
+          // ✅ HISTÓRICO REDUZIDO (ANTI BUG)
+          ...history.slice(-6).map((m: any) => ({
             role: m.role === "user" ? "user" : "assistant",
             content: m.text,
           })),
 
-          // mensagem atual
           {
             role: "user",
             content: message,
