@@ -73,12 +73,7 @@ export default async function handler(req: any, res: any) {
 // 🧠 LIMPEZA DE DADOS FAKE
 // =========================
 
-const isValidNumber = (value: any) => {
-  const num = Number(value);
-  return !isNaN(num);
-};
-
-const toNumber = (value) => {
+const toNumber = (value: any): number | null => {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 };
