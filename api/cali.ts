@@ -69,11 +69,62 @@ export default async function handler(req: any, res: any) {
     // CONTEXTO DO USUÁRIO
     // =========================
 
-    const userContext = `
-Nome: ${user?.name || "Não informado"}
-Peso: ${user?.weight || "Não informado"} kg
-Altura: ${user?.height || "Não informado"} cm
-Objetivo: ${user?.goal || "Não informado"}
+    // =========================
+// 🧠 LIMPEZA DE DADOS FAKE
+// =========================
+
+const isValidNumber = (value: any) => {
+  const num = Number(value);
+  return !isNaN(num);
+};
+
+const toNumber = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const weightNum = toNumber(user?.weight);
+const heightNum = toNumber(user?.height);
+const ageNum = toNumber(user?.age);
+
+const cleanUser = {
+  name: user?.name || null,
+  goal: user?.goal || null,
+
+  weight:
+    weightNum !== null &&
+    weightNum !== 30 &&
+    weightNum > 0 &&
+    weightNum < 400
+      ? weightNum
+      : null,
+
+  height:
+    heightNum !== null &&
+    heightNum !== 140 &&
+    heightNum > 0 &&
+    heightNum < 300
+      ? heightNum
+      : null,
+
+  age:
+    ageNum !== null &&
+    ageNum !== 13 &&
+    ageNum > 0 &&
+    ageNum < 120
+      ? ageNum
+      : null,
+};
+
+// =========================
+// CONTEXTO DO USUÁRIO
+// =========================
+
+const userContext = `
+Nome: ${cleanUser.name || "Não informado"}
+Peso: ${cleanUser.weight || "Não informado"} kg
+Altura: ${cleanUser.height || "Não informado"} cm
+Objetivo: ${cleanUser.goal || "Não informado"}
 `;
 
     // =========================
@@ -137,9 +188,27 @@ Exemplos:
 Dados:
 ${userContext}
 
-SE EXISTIR QUALQUER DADO:
+SE EXISTIREM DADOS REAIS:
 
-→ VOCÊ DEVE USAR NA RESPOSTA
+→ USE NATURALMENTE NA RESPOSTA
+
+SE OS DADOS FOREM "Não informado":
+
+→ NÃO INVENTAR
+→ NÃO ASSUMIR NADA
+→ DIZER QUE NÃO TEM ESSAS INFORMAÇÕES
+→ SUGERIR PREENCHER NA ABA "meu perfil"
+
+========================
+⚠️ DADOS INCOMPLETOS
+========================
+
+Se peso, altura ou idade estiverem ausentes:
+
+→ deixar claro de forma natural
+
+Exemplo:
+"Ainda não tenho seus dados como peso e altura 😅 se puder, preenche lá no seu perfil — isso me ajuda a te orientar melhor."
 
 Regras:
 
@@ -258,6 +327,11 @@ Se for emocional:
 
 Ex:
 "Entendo 😅 mas posso te ajudar melhor com sua alimentação. Quer ajustar sua dieta hoje?"
+
+❌ NUNCA considerar como válidos:
+- idade 13
+- altura 140
+- peso 30
 
 ========================
 🎯 OBJETIVO FINAL
