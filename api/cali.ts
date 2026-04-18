@@ -71,10 +71,12 @@ export default async function handler(req: any, res: any) {
     // =========================
 
     const userContext = `
-Nome: ${user?.name || "Não informado"}
-Peso: ${user?.weight || "Não informado"} kg
-Altura: ${user?.height || "Não informado"} cm
-Objetivo: ${user?.goal || "Não informado"}
+Nome: ${user?.name ?? "Não informado"}
+Idade: ${user?.age ?? "Não informado"} anos
+Peso: ${user?.weight ?? "Não informado"} kg
+Altura: ${user?.height ?? "Não informado"} cm
+Peso ideal: ${user?.ideal_weight ?? "Não informado"} kg
+Objetivo: ${user?.goal ?? "Não informado"}
 `;
 
     // =========================
