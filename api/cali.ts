@@ -26,6 +26,7 @@ export default async function handler(req: any, res: any) {
     const message = body.message;
     const user = body.user;
     const analyses = body.analyses;
+    const meals = body.meals || [];
     const history = body.history || [];
 
     if (!message) {
@@ -34,9 +35,45 @@ export default async function handler(req: any, res: any) {
 
     const hasHistory = history.length > 0;
     const hasAnalyses = analyses && analyses.length > 0;
+    const hasMeals = meals.length > 0;
 
     // =========================
-    // ✅ DETECÇÃO DE SAUDAÇÃO + HORÁRIO (CORRIGIDO)
+    // 📊 CÁLCULO DE MACROS (só se houver meals)
+    // =========================
+
+    const totalCalories = hasMeals
+      ? meals.reduce((sum: number, m: any) => sum + (m.calories || 0), 0)
+      : 0;
+    const totalProtein = hasMeals
+      ? meals.reduce((sum: number, m: any) => sum + (m.protein || 0), 0)
+      : 0;
+    const totalCarbs = hasMeals
+      ? meals.reduce((sum: number, m: any) => sum + (m.carbs || 0), 0)
+      : 0;
+    const totalFats = hasMeals
+      ? meals.reduce((sum: number, m: any) => sum + (m.fats || 0), 0)
+      : 0;
+
+    // =========================
+    // 🧮 INTERPRETAÇÃO AUTOMÁTICA
+    // =========================
+
+    const calorieStatus =
+      totalCalories < 1800
+        ? "déficit calórico"
+        : totalCalories <= 2500
+        ? "manutenção calórica"
+        : "superávit calórico";
+
+    const proteinStatus =
+      totalProtein < 80
+        ? "baixa (abaixo do recomendado)"
+        : totalProtein <= 140
+        ? "adequada"
+        : "alta";
+
+    // =========================
+    // ✅ DETECÇÃO DE SAUDAÇÃO + HORÁRIO
     // =========================
 
     const normalized = message.toLowerCase().trim();
@@ -61,7 +98,6 @@ export default async function handler(req: any, res: any) {
       greetingText = "Boa noite 🌙 Tudo bem? Quer continuar de onde paramos?";
     }
 
-    // ✅ Só intercepta se NÃO for primeira mensagem
     if (isGreeting && hasHistory) {
       return res.status(200).json({ result: greetingText });
     }
@@ -80,12 +116,12 @@ Objetivo: ${user?.goal ?? "Não informado"}
 `;
 
     // =========================
-    // 🍽 CONTEXTO DAS REFEIÇÕES
+    // 🍽 CONTEXTO DAS ANÁLISES
     // =========================
 
     const analysesContext = hasAnalyses
       ? `
-Refeições recentes:
+Refeições recentes (análises resumidas):
 ${analyses
   .map(
     (a: any) =>
@@ -95,10 +131,45 @@ ${analyses
   )
   .join("\n")}
 `
-      : `Nenhuma refeição registrada recentemente.`;
+      : `Nenhuma análise registrada recentemente.`;
 
     // =========================
-    // 🧠 PROMPT FINAL (CORRIGIDO PROFISSIONAL)
+    // 🥗 CONTEXTO DE MEALS (lista detalhada)
+    // =========================
+
+    const mealsContext = hasMeals
+      ? `
+Histórico de refeições completas (dados reais):
+${meals
+  .map(
+    (m: any) =>
+      `- ${m.food} | ${m.calories} kcal | P:${m.protein || 0}g C:${m.carbs || 0}g G:${m.fats || 0}g | ${m.date}`
+  )
+  .join("\n")}
+`
+      : `Nenhuma refeição completa registrada recentemente.`;
+
+    // =========================
+    // 📊 RESUMO TOTAL DO DIA
+    // =========================
+
+    const mealsSummaryContext = hasMeals
+      ? `
+RESUMO TOTAL DO DIA:
+
+- Calorias: ${totalCalories} kcal
+- Proteína: ${totalProtein} g
+- Carboidratos: ${totalCarbs} g
+- Gorduras: ${totalFats} g
+
+INTERPRETAÇÃO DO DIA:
+- Calorias: ${calorieStatus}
+- Proteína: ${proteinStatus}
+`
+      : "";
+
+    // =========================
+    // 🧠 PROMPT FINAL
     // =========================
 
     const prompt = `
@@ -109,7 +180,7 @@ REGRAS ABSOLUTAS:
 - Se EXISTIR histórico → NÃO é a primeira mensagem
 - Se NÃO existir histórico → é a primeira interação
 
---- 
+---
 
 REGRA CRÍTICA:
 
@@ -167,9 +238,51 @@ NUNCA forçar dados.
 
 ---
 
-ANÁLISE DE REFEIÇÕES:
+FONTES DE DADOS — PRIORIDADE:
 
-Se houver refeições:
+IMPORTANTE:
+- analyses = histórico resumido (fonte secundária)
+- meals = dados reais completos com macros (fonte primária)
+- O RESUMO TOTAL DO DIA (calorias/macros) É MAIS IMPORTANTE QUE A LISTA DE REFEIÇÕES
+- meals tem PRIORIDADE em caso de conflito entre as duas fontes
+- SEMPRE USE O RESUMO TOTAL DO DIA E A INTERPRETAÇÃO DO DIA COMO BASE PRINCIPAL DE ANÁLISE
+- NÃO recalcule os macros manualmente — use os valores já calculados pelo backend
+- Nunca misture valores entre meals e analyses sem separação clara
+
+---
+
+ANÁLISE NUTRICIONAL COM MEALS:
+
+ANÁLISE TEMPORAL:
+
+Use o campo "date" das meals para:
+
+- identificar padrões de repetição alimentar
+- comparar dias anteriores
+- detectar consistência ou irregularidade na dieta
+
+Se houver meals:
+
+- Use o RESUMO TOTAL DO DIA e a INTERPRETAÇÃO DO DIA como ponto de partida obrigatório
+- NÃO refaça os cálculos — confie nos valores entregues pelo backend
+- Identifique excesso calórico ou déficit com base na interpretação pronta
+- Identifique baixa proteína com base no status já calculado
+- Compare com o objetivo do usuário (emagrecer, ganhar massa, etc.)
+- Considere a data de cada refeição para identificar padrão semanal
+- Use os macros para dar recomendações específicas e personalizadas
+- EVITE respostas genéricas quando houver dados reais disponíveis
+- SEMPRE dê recomendação prática (não só análise)
+- SEMPRE sugira ajuste simples (ex: aumentar proteína, reduzir carbo, beber mais água)
+
+Se NÃO houver meals nem analyses:
+- NÃO inventar dados
+- Dar orientação geral baseada no objetivo do usuário
+
+---
+
+ANÁLISE DE ANÁLISES (SECUNDÁRIO):
+
+Se houver analyses mas NÃO houver meals:
 
 Você DEVE analisar:
 
@@ -180,10 +293,6 @@ Você DEVE analisar:
 
 E comentar NATURALMENTE.
 
-Se NÃO houver:
-- NÃO inventar
-- dar orientação geral
-
 ---
 
 CONTINUIDADE (CRÍTICO):
@@ -191,10 +300,10 @@ CONTINUIDADE (CRÍTICO):
 Se usuário disser:
 - "sim", "quero", "pode", "ok"
 
-👉 Continue exatamente de onde parou  
-👉 Aprofunde a resposta anterior  
+👉 Continue exatamente de onde parou
+👉 Aprofunde a resposta anterior
 
-❌ PROIBIDO reiniciar conversa  
+❌ PROIBIDO reiniciar conversa
 
 ---
 
@@ -225,7 +334,12 @@ ${userContext}
 ---
 
 CONTEXTO DO DIA:
+
 ${analysesContext}
+
+${mealsSummaryContext}
+
+${mealsContext}
 `;
 
     // =========================
