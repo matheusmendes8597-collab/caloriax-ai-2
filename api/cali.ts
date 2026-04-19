@@ -525,13 +525,14 @@ export default async function handler(req: any, res: any) {
     const mode = detectMode(message);
 
     if (mode === "greeting") {
-      const { greeting, emoji } = getTimedGreeting();
-      const namePart = user?.name ? `, ${user.name}` : "";
-      return res.status(200).json({
-        result: `${greeting}${namePart}! ${emoji} Como posso te ajudar hoje?`,
-        resetContext: true,
-      });
-    }
+  const { greeting, emoji } = getTimedGreeting();
+  const namePart = user?.name ? `, ${user.name}` : "";
+
+  return res.status(200).json({
+    result: `${greeting}${namePart}! ${emoji} Como posso te ajudar hoje?`,
+    resetContext: true,
+  });
+}
 
     // --- Tradução de objetivo (só executa se NÃO for greeting)
     const { label: goalLabel } = translateGoal(user?.goal);
