@@ -95,9 +95,13 @@ const isTimeGreeting =
 const isGreeting = isPureGreeting || isTimeGreeting;
 
     const now = new Date();
-    const hour = new Date(
-      now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })
-    ).getHours();
+    const hour = Number(
+  new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "numeric",
+    hour12: false,
+  }).format(new Date())
+);
 
     const greetingsMap = {
       morning: "Bom dia ☀️ Como posso te ajudar hoje?",
