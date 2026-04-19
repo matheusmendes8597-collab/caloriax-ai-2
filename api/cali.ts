@@ -86,13 +86,13 @@ export default async function handler(req: any, res: any) {
     // =========================
 
     const normalized = message.toLowerCase().trim();
+    const isPureGreeting =
+  ["oi", "olá", "ola", "opa", "eae", "e aí"].includes(normalized);
 
-    const greetings = [
-      "oi", "olá", "ola", "opa", "eae", "e aí",
-      "bom dia", "boa tarde", "boa noite"
-    ];
+const isTimeGreeting =
+  ["bom dia", "boa tarde", "boa noite"].includes(normalized);
 
-    const isGreeting = greetings.some(g => normalized.includes(g));
+const isGreeting = isPureGreeting || isTimeGreeting;
 
     const now = new Date();
     const hour = new Date(
@@ -113,9 +113,8 @@ export default async function handler(req: any, res: any) {
     const greetingText = greetingsMap[period];
 
     if (isGreeting && hasHistory) {
-      return res.status(200).json({ result: greetingText });
-    }
-
+  return res.status(200).json({ result: greetingText });
+}
     // =========================
     // 👤 CONTEXTO DO USUÁRIO
     // =========================
