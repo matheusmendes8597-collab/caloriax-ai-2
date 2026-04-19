@@ -44,18 +44,16 @@ const GREETING_PATTERN =
 const NUTRITION_INTENT_PATTERN =
   /caloria|kcal|dieta|emagrec|massa|comer|refeic|proteina|carboidrato|gordura|meta|plano|peso|treino|nutri/i;
 
-function detectMode(message: string): "greeting" | "nutrition" {
+function detectMode(message: string): "greeting" | "nutrition" | "blocked" {
   const n = message.toLowerCase().trim();
+
   const isGreeting = GREETING_PATTERN.test(n);
+  const hasNutritionIntent = NUTRITION_INTENT_PATTERN.test(n);
 
   if (isGreeting) return "greeting";
-  return "nutrition";
-}
+  if (!hasNutritionIntent) return "blocked";
 
-if (mode === "blocked") {
-  return res.status(200).json({
-    result: "Posso te ajudar apenas com alimentação, dieta e nutrição 😉",
-  });
+  return "nutrition";
 }
 
 // =========================
@@ -537,6 +535,11 @@ if (!isNutritionIntent) {
 
     // --- Detecção de modo ANTES de qualquer processamento
     const mode = detectMode(message);
+    if (mode === "blocked") {
+  return res.status(200).json({
+    result: "Posso te ajudar apenas com alimentação, dieta e nutrição 😉",
+  });
+}
 
     if (mode === "greeting") {
   const { greeting, emoji } = getTimedGreeting();
