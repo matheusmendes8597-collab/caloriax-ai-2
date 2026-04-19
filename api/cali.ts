@@ -7,6 +7,15 @@ export const config = {
 };
 
 declare const process: any;
+function isOutOfScope(message: string): boolean {
+  const n = message.toLowerCase();
+
+  const nutritionOnly =
+    /caloria|kcal|dieta|comida|nutri|refeição|proteína|carboidrato|gordura|peso|emagrec|massa|treino|alimentação|fome|ganhar|perder|imc|metabolismo|calcular/i;
+
+  // Se NÃO tiver nada de nutrição → fora de escopo
+  return !nutritionOnly.test(n);
+}
 
 // =========================
 // 🎯 NORMALIZAÇÃO DE OBJETIVO
@@ -523,6 +532,9 @@ export default async function handler(req: any, res: any) {
       "Erro ao responder.";
 
     let finalResult = result;
+    if (isOutOfScope(message)) {
+  finalResult = "Posso te ajudar apenas com alimentação, dieta e nutrição 😉";
+}
 
     finalResult = finalResult.replace(
       /\b\d{1,2}\s+de\s+\w+\s+de\s+\d{4}\b/g,
