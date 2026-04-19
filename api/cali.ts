@@ -88,8 +88,8 @@ function getTimedGreeting(): { greeting: string; emoji: string } {
     }).format(new Date())
   );
 
-  if (hour >= 5 && hour < 12) return { greeting: "Bom dia", emoji: "☀️" };
-  if (hour >= 12 && hour < 18) return { greeting: "Boa tarde", emoji: "🌤️" };
+  if (hour >= 5 && hour < 13) return { greeting: "Bom dia", emoji: "☀️" };
+  if (hour >= 13 && hour < 18) return { greeting: "Boa tarde", emoji: "🌤️" };
   return { greeting: "Boa noite", emoji: "🌙" };
 }
 
