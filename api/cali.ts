@@ -492,21 +492,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    const normalizedMessage = message.toLowerCase().trim();
-
-const isBlockedIntent =
-  normalizedMessage.includes("matem") ||
-  normalizedMessage.includes("program") ||
-  normalizedMessage.includes("lógica") ||
-  normalizedMessage.includes("logica") ||
-  normalizedMessage.includes("código") ||
-  normalizedMessage.includes("codigo");
-
-if (isBlockedIntent) {
-  return res.status(200).json({
-    result: "Posso te ajudar somente com alimentação, dieta e nutrição 😉",
-  });
-}
+    const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -537,26 +523,6 @@ if (isBlockedIntent) {
       "Erro ao responder.";
 
     let finalResult = result;
-    // =========================
-// 🚨 HARD OVERRIDE FIX (CRÍTICO)
-// =========================
-
-const FORCED_BLOCK_RESPONSE =
-  "Posso te ajudar somente com alimentação, dieta e nutrição 😉";
-
-const normalized = finalResult.toLowerCase().trim();
-
-const isBlockedIntent =
-  normalized.includes("matem") ||
-  normalized.includes("program") ||
-  normalized.includes("lógica") ||
-  normalized.includes("logica") ||
-  normalized.includes("código") ||
-  normalized.includes("codigo");
-
-if (isBlockedIntent) {
-  finalResult = FORCED_BLOCK_RESPONSE;
-}
 
     finalResult = finalResult.replace(
       /\b\d{1,2}\s+de\s+\w+\s+de\s+\d{4}\b/g,
