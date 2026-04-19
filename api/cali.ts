@@ -121,6 +121,40 @@ function getTimedGreeting(): { greeting: string; emoji: string } {
 }
 
 // =========================
+// 🚫 DETECÇÃO DE PERGUNTA DE HORÁRIO
+// =========================
+
+function isTimeQuestion(message: string): boolean {
+  return /que horas|quantas horas|horario|horas agora/i.test(message);
+}
+
+// =========================
+// 🍽️ DETECÇÃO DE PERGUNTA SOBRE ÚLTIMA REFEIÇÃO
+// =========================
+
+function isLastMealQuestion(message: string): boolean {
+  return /última refeição|ultimo que comi|o que comi por último|o que comi ultimo|qual foi minha última|qual minha última refeição/i.test(
+    message
+  );
+}
+
+// =========================
+// 🔁 DETECÇÃO DE RISCO DE ECO
+// =========================
+
+function isEchoLikely(message: string): boolean {
+  const n = message.trim();
+  const wordCount = n.split(/\s+/).length;
+  const endsWithQuestion = n.endsWith("?");
+  const hasInterrogative =
+    /\b(quem|o que|quando|onde|como|quanto|quantos|qual|quais|por que|pra que)\b/i.test(
+      n
+    );
+
+  return endsWithQuestion && wordCount < 6 && hasInterrogative;
+}
+
+// =========================
 // 📊 CÁLCULO DE MACROS
 // =========================
 
@@ -198,7 +232,7 @@ function buildSharedContext(params: {
               m.protein || 0
             }g | Carboidratos: ${m.carbs || 0}g | Gorduras: ${
               m.fats || 0
-            }g | ${m.date}`
+            }g`
         )
         .join("\n")}`
     : "";
@@ -348,6 +382,20 @@ const TIME_RULE = `REGRA DE TEMPO:
 ✔ Use o período do dia (manhã, almoço, noite) para adaptar respostas
 ✔ Nunca use números de horário`;
 
+const NO_ECHO_RULE = `REGRA ANTI-ECO (OBRIGATÓRIA):
+
+❌ NUNCA repita ou reformule a pergunta do usuário
+❌ NUNCA devolva a pergunta como resposta
+✔ Sempre responda com informação útil e direta
+✔ Se a pergunta for curta ou direta: vá direto ao ponto`;
+
+const NO_PLACEHOLDER_RULE = `REGRA DE DADOS AUSENTES:
+
+✔ Se não souber uma informação específica: diga claramente que não tem esse dado
+❌ NUNCA invente dados
+❌ NUNCA use placeholders como "data não disponível", "N/A", "não informado" na resposta ao usuário
+✔ Substitua por linguagem natural: "não tenho esse dado", "não foi registrado"`;
+
 // =========================
 // 🧠 PROMPT — COM OBJETIVO
 // =========================
@@ -359,6 +407,7 @@ function buildPromptWithGoal(params: {
   isFirstMessage: boolean;
   recentContext: boolean;
   hasMeals: boolean;
+  forceDirectResponse: boolean;
 }): string {
   const {
     message,
@@ -367,6 +416,7 @@ function buildPromptWithGoal(params: {
     isFirstMessage,
     recentContext,
     hasMeals,
+    forceDirectResponse,
   } = params;
 
   const presentationRule = isFirstMessage
@@ -398,6 +448,10 @@ function buildPromptWithGoal(params: {
 ✔ Seja direto — sem explicação longa`
     : `14. ANÁLISE INTELIGENTE: Sem refeições registradas — NÃO faça análise de consumo.`;
 
+  const directResponseRule = forceDirectResponse
+    ? `\n⚠️ ATENÇÃO ESPECIAL PARA ESTA MENSAGEM: A pergunta é curta e direta. Responda de forma objetiva e imediata. NÃO repita a pergunta. NÃO faça eco. Vá direto ao ponto.\n`
+    : "";
+
   return `
 Você é a Cali, nutricionista clínica digital da Caloriax IA.
 
@@ -415,6 +469,10 @@ REGRAS:
 ${goalRule}
 6. CONTINUIDADE: ${continuityRule}
 7. ${intelligentAnalysisRule}
+${directResponseRule}
+${NO_ECHO_RULE}
+
+${NO_PLACEHOLDER_RULE}
 
 ${PRIVACY_TIME_RULE}
 
@@ -436,6 +494,7 @@ function buildPromptWithoutGoal(params: {
   isFirstMessage: boolean;
   recentContext: boolean;
   hasMeals: boolean;
+  forceDirectResponse: boolean;
 }): string {
   const {
     message,
@@ -443,6 +502,7 @@ function buildPromptWithoutGoal(params: {
     isFirstMessage,
     recentContext,
     hasMeals,
+    forceDirectResponse,
   } = params;
 
   const presentationRule = isFirstMessage
@@ -465,6 +525,10 @@ function buildPromptWithoutGoal(params: {
 ✔ Seja direto — sem explicação longa`
     : `14. ANÁLISE INTELIGENTE: Sem refeições registradas — NÃO faça análise de consumo.`;
 
+  const directResponseRule = forceDirectResponse
+    ? `\n⚠️ ATENÇÃO ESPECIAL PARA ESTA MENSAGEM: A pergunta é curta e direta. Responda de forma objetiva e imediata. NÃO repita a pergunta. NÃO faça eco. Vá direto ao ponto.\n`
+    : "";
+
   return `
 Você é a Cali, nutricionista clínica digital da Caloriax IA.
 
@@ -481,6 +545,10 @@ REGRAS:
 3. ${presentationRule}
 4. CONTINUIDADE: ${continuityRule}
 5. ${intelligentAnalysisRule}
+${directResponseRule}
+${NO_ECHO_RULE}
+
+${NO_PLACEHOLDER_RULE}
 
 ${PRIVACY_TIME_RULE}
 
@@ -490,6 +558,24 @@ ${TIME_RULE}
 ---
 ${nutritionContext}
 `.trim();
+}
+
+// =========================
+// 🔒 SANITIZAÇÃO DE HORÁRIO NA RESPOSTA
+// =========================
+
+function sanitizeTimeReferences(text: string): string {
+  return text
+    // "às 10:30 de hoje" → "mais cedo hoje"
+    .replace(/\bàs?\s*\d{1,2}:\d{2}\s*(de hoje)?\b/g, "mais cedo hoje")
+    // "10:30" solto → "recentemente"
+    .replace(/\b\d{1,2}:\d{2}\b/g, "recentemente")
+    // "10h" ou "10 h" → removido
+    .replace(/\b\d{1,2}\s?h\b/g, "")
+    // "10 horas" ou "10horas" → removido
+    .replace(/\b\d{1,2}\s?horas\b/gi, "")
+    // fallback final para qualquer HH:MM residual
+    .replace(/\b\d{1,2}:\d{2}\b/g, "");
 }
 
 // =========================
@@ -516,6 +602,28 @@ export default async function handler(req: any, res: any) {
     if (!message)
       return res.status(400).json({ error: "Mensagem é obrigatória" });
 
+    // 🚫 Interceptar perguntas de horário antes de qualquer processamento
+    if (isTimeQuestion(message)) {
+      return res.status(200).json({
+        result:
+          "Agora eu não consigo ver o horário, mas posso te ajudar com sua alimentação 😉",
+      });
+    }
+
+    // 🍽️ Interceptar pergunta sobre última refeição
+    if (isLastMealQuestion(message)) {
+      if (meals.length === 0) {
+        return res.status(200).json({
+          result: "Você ainda não registrou nenhuma refeição hoje.",
+        });
+      }
+      const lastMeal = meals[meals.length - 1];
+      const foodName = lastMeal?.food ?? "um alimento";
+      return res.status(200).json({
+        result: `Sua última refeição foi **${foodName}**, mais cedo hoje.`,
+      });
+    }
+
     const missingUserData = isMissingEssentialUserData(user);
 
     const mode = detectMode(message);
@@ -538,6 +646,7 @@ export default async function handler(req: any, res: any) {
     const recentContext = hasRecentContext(history);
     const safeHistory = recentContext ? history.slice(-6) : [];
     const isFirstMessage = history.length === 0;
+    const forceDirectResponse = isEchoLikely(message);
 
     let includeGoal = recentContext || hasGoalIntent(message);
 
@@ -571,6 +680,7 @@ export default async function handler(req: any, res: any) {
         isFirstMessage,
         recentContext,
         hasMeals,
+        forceDirectResponse,
       });
     } else {
       const nutritionContext = buildContextWithoutGoal({
@@ -588,6 +698,7 @@ export default async function handler(req: any, res: any) {
         isFirstMessage,
         recentContext,
         hasMeals,
+        forceDirectResponse,
       });
     }
 
@@ -615,16 +726,17 @@ export default async function handler(req: any, res: any) {
     const result =
       data.output_text ||
       data.output
-        ?.map((o: any) =>
-          o.content?.map((c: any) => c.text).join("")
-        )
+        ?.map((o: any) => o.content?.map((c: any) => c.text).join(""))
         .join("") ||
       "Erro ao responder.";
 
     let finalResult = result;
 
-    // 🔒 Fallback de segurança (caso IA tente expor horário)
-    finalResult = finalResult.replace(/\b\d{1,2}:\d{2}\b/g, "");
+    // 🔒 Sanitizar todas as referências de horário
+    finalResult = sanitizeTimeReferences(finalResult);
+
+    // 🔒 Remover menções feias de data/placeholder
+    finalResult = finalResult.replace(/data não disponível/gi, "");
 
     finalResult = finalResult
       .replace(/manutenção de peso/gi, "Manter saúde")
