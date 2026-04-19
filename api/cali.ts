@@ -524,6 +524,14 @@ export default async function handler(req: any, res: any) {
 
     let finalResult = result;
 
+    // =========================
+// 🔒 OVERRIDE DE ESCOPAMENTO (FIREWALL FINAL)
+// =========================
+
+if (finalResult.toLowerCase().includes("posso te ajudar")) {
+  finalResult = "Posso te ajudar somente com alimentação, dieta e nutrição 😉";
+}
+
     finalResult = finalResult.replace(
       /\b\d{1,2}\s+de\s+\w+\s+de\s+\d{4}\b/g,
       "data não disponível"
