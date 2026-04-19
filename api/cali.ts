@@ -9,9 +9,14 @@ export const config = {
 declare const process: any;
 
 // =========================
+// 🛡 TERMOS PROIBIDOS
+// =========================
+
+const RAW_GOAL_LEAK_PATTERN =
+  /\b(maintain|maintenance|bulk|bulking|cut|cutting|deficit|surplus|lose_weight|gain_muscle|recomp)\b/i;
+
+// =========================
 // 🎯 NORMALIZAÇÃO DE OBJETIVO
-// FIX: Proteção contra valores não-string (null, number, object)
-// Suporta variações em casing, espaços, acentos, inglês e underscores
 // =========================
 
 function normalizeGoalKey(raw: any): string {
@@ -25,7 +30,6 @@ function normalizeGoalKey(raw: any): string {
 }
 
 const goalMap: Record<string, string> = {
-  // Português
   emagrecer: "emagrecimento",
   emagrecimento: "emagrecimento",
   "perder peso": "emagrecimento",
@@ -38,7 +42,6 @@ const goalMap: Record<string, string> = {
   manter: "manutenção de peso",
   equilibrio: "equilíbrio alimentar",
   "alimentacao saudavel": "alimentação saudável",
-  // Inglês
   cut: "emagrecimento",
   cutting: "emagrecimento",
   deficit: "emagrecimento",
@@ -71,34 +74,43 @@ const goalFocusMap: Record<string, string> = {
 };
 
 function translateGoal(raw: any): { label: string; focus: string } {
-  const key   = normalizeGoalKey(raw);
-  const label = goalMap[key] ?? "alimentação saudável";
-  const focus = goalFocusMap[label] ?? "equilíbrio nutricional";
+  const safeRaw = typeof raw === "string" ? raw : "";
+  const key     = normalizeGoalKey(safeRaw);
+  const label   = goalMap[key] ?? "alimentação saudável";
+  const focus   = goalFocusMap[label] ?? "equilíbrio nutricional";
+
+  if (RAW_GOAL_LEAK_PATTERN.test(label) || RAW_GOAL_LEAK_PATTERN.test(focus)) {
+    return { label: "alimentação saudável", focus: "equilíbrio nutricional" };
+  }
+
   return { label, focus };
 }
 
 // =========================
-// ✅ DETECÇÃO DE SAUDAÇÃO
-// FIX: Regex com $ (match exato) — evita pegar "oi quero emagrecer" como greeting
+// ✅ DETECÇÃO DE MODO
 // =========================
+
+const GREETING_PATTERN =
+  /^(oi+|ol[aá]+|opa+|eae|e\s*a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite|hey+|hi+|hello+)\b/i;
+
+const NUTRITION_INTENT_PATTERN =
+  /caloria|kcal|dieta|emagrec|massa|comer|refeic|proteina|carboidrato|gordura|meta|plano|peso|treino|nutri/i;
 
 function detectMode(message: string): "greeting" | "nutrition" {
   const n = message.toLowerCase().trim();
-
-  const isGreeting =
-    /^(oi+|ol[aá]+|opa|eae|e\s*a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite|hey+|hi+|hello)$/.test(n);
-
-  return isGreeting ? "greeting" : "nutrition";
+  const isGreeting         = GREETING_PATTERN.test(n);
+  const hasNutritionIntent = NUTRITION_INTENT_PATTERN.test(n);
+  if (isGreeting && !hasNutritionIntent) return "greeting";
+  return "nutrition";
 }
 
 // =========================
 // 💬 DETECÇÃO DE MENSAGEM LEVE
-// FIX: Regex ao invés de Set — cobre "okkk", "simm", "valeu!", "obrigado mano"
 // =========================
 
 function checkIsLightMessage(msg: string): boolean {
   const n = msg.toLowerCase().trim();
-  return /^(sim+|s+|ok+[!]*|okay|valeu+[!]*|obrigad[oa]+(\s+\w+)*|certo+|entendi+|show+|boa+|top+|perfeito+|massa+)/.test(n);
+  return /^(sim+|s+|ok+[!]*|okay|valeu+[!]*|obrigad[oa]+(\s+\w+)*|certo+|entendi+|show+|boa+|top+|perfeito+|massa+)$/.test(n);
 }
 
 // =========================
@@ -120,7 +132,7 @@ function getTimedGreeting(): { greeting: string; emoji: string } {
 }
 
 // =========================
-// 📊 CÁLCULO DE MACROS DO DIA
+// 📊 CÁLCULO DE MACROS
 // =========================
 
 function calcMacros(meals: any[]) {
@@ -134,53 +146,29 @@ function calcMacros(meals: any[]) {
 
 // =========================
 // 🔁 CONTROLE DE CONTINUIDADE
-// FIX: Fallback inteligente quando timestamp não existe no frontend
 // =========================
 
 function hasRecentContext(history: any[]): boolean {
   if (!history || history.length === 0) return false;
-
   const last = history[history.length - 1];
-
-  // Fallback: sem timestamp → considera contexto ativo se houver 2+ mensagens
   if (!last?.timestamp) return history.length >= 2;
-
   const elapsed = Date.now() - new Date(last.timestamp).getTime();
-  return elapsed < 1000 * 60 * 10; // 10 minutos
+  return elapsed < 1000 * 60 * 10;
 }
 
 // =========================
-// 🧩 CONTEXTO NUTRICIONAL
-// Backend monta o contexto — IA apenas escreve
-// includeGoal = false → objetivo não aparece em nenhum lugar do prompt
+// 🧩 CONTEXTO COMPARTILHADO
 // =========================
 
-function buildNutritionContext(params: {
-  user: any;
-  goalLabel: string;
-  goalFocus: string;
-  includeGoal: boolean;
+function buildSharedContext(params: {
+  userCtx: string;
   meals: any[];
   hasMeals: boolean;
   macros: ReturnType<typeof calcMacros>;
   analyses: any[];
   hasAnalyses: boolean;
 }): string {
-  const {
-    user, goalLabel, goalFocus, includeGoal,
-    meals, hasMeals, macros, analyses, hasAnalyses,
-  } = params;
-
-  const goalLines = includeGoal
-    ? `\nObjetivo: ${goalLabel}\nFoco nutricional: ${goalFocus}`
-    : "";
-
-  const userCtx = `DADOS DO USUÁRIO:
-Nome: ${user?.name ?? "Não informado"}
-Idade: ${user?.age ?? "Não informado"} anos
-Peso: ${user?.weight ?? "Não informado"} kg
-Altura: ${user?.height ?? "Não informado"} cm
-Peso ideal: ${user?.ideal_weight ?? "Não informado"} kg${goalLines}`;
+  const { userCtx, meals, hasMeals, macros, analyses, hasAnalyses } = params;
 
   const summaryCtx = hasMeals
     ? `TOTAIS DO DIA (não recalcule — valores exatos do backend):
@@ -212,33 +200,83 @@ Peso ideal: ${user?.ideal_weight ?? "Não informado"} kg${goalLines}`;
 }
 
 // =========================
-// 🧠 PROMPT — MODO NUTRIÇÃO
-// FIX: goalLabel e goalFocus chegam vazios quando includeGoal = false
-// IA só escreve — backend decide todas as regras
+// 🧩 CONTEXTO — COM OBJETIVO
 // =========================
 
-function buildNutritionPrompt(params: {
+function buildContextWithGoal(params: {
+  user: any;
+  goalLabel: string;
+  goalFocus: string;
+  meals: any[];
+  hasMeals: boolean;
+  macros: ReturnType<typeof calcMacros>;
+  analyses: any[];
+  hasAnalyses: boolean;
+}): string {
+  const { user, goalLabel, goalFocus, meals, hasMeals, macros, analyses, hasAnalyses } = params;
+
+  const userCtx = `DADOS DO USUÁRIO:
+Nome: ${user?.name ?? "Não informado"}
+Idade: ${user?.age ?? "Não informado"} anos
+Peso: ${user?.weight ?? "Não informado"} kg
+Altura: ${user?.height ?? "Não informado"} cm
+Peso ideal: ${user?.ideal_weight ?? "Não informado"} kg
+Objetivo: ${goalLabel}
+Foco nutricional: ${goalFocus}`;
+
+  return buildSharedContext({ userCtx, meals, hasMeals, macros, analyses, hasAnalyses });
+}
+
+// =========================
+// 🧩 CONTEXTO — SEM OBJETIVO
+// =========================
+
+function buildContextWithoutGoal(params: {
+  user: any;
+  meals: any[];
+  hasMeals: boolean;
+  macros: ReturnType<typeof calcMacros>;
+  analyses: any[];
+  hasAnalyses: boolean;
+}): string {
+  const { user, meals, hasMeals, macros, analyses, hasAnalyses } = params;
+
+  const userCtx = `DADOS DO USUÁRIO:
+Nome: ${user?.name ?? "Não informado"}
+Idade: ${user?.age ?? "Não informado"} anos
+Peso: ${user?.weight ?? "Não informado"} kg
+Altura: ${user?.height ?? "Não informado"} cm
+Peso ideal: ${user?.ideal_weight ?? "Não informado"} kg`;
+
+  return buildSharedContext({ userCtx, meals, hasMeals, macros, analyses, hasAnalyses });
+}
+
+// =========================
+// 🧠 PROMPT — COM OBJETIVO
+// =========================
+
+function buildPromptWithGoal(params: {
   message: string;
   goalLabel: string;
   goalFocus: string;
-  includeGoal: boolean;
   nutritionContext: string;
   isFirstMessage: boolean;
   recentContext: boolean;
 }): string {
-  const {
-    message, goalLabel, goalFocus, includeGoal,
-    nutritionContext, isFirstMessage, recentContext,
-  } = params;
+  const { message, goalLabel, goalFocus, nutritionContext, isFirstMessage, recentContext } = params;
 
-  const goalLine = includeGoal
-    ? `5. OBJETIVO DO USUÁRIO: **${goalLabel}** | Foco: ${goalFocus}
-   → Mencione apenas quando a mensagem tiver intenção nutricional clara`
-    : `5. NÃO mencione objetivo nutricional nesta resposta`;
+  const presentationRule = isFirstMessage
+    ? "Apresente-se brevemente como Cali, nutricionista do Caloriax."
+    : "Não se apresente — já houve conversa.";
+
+  const goalRule = isFirstMessage
+    ? `5. NÃO mencione o objetivo do usuário nesta resposta, a menos que ele tenha perguntado algo nutricional explícito.`
+    : `5. OBJETIVO DO USUÁRIO: **${goalLabel}** | Foco: ${goalFocus}
+   → Mencione apenas quando a mensagem tiver intenção nutricional clara`;
 
   const continuityRule = recentContext
-    ? `9. CONTINUIDADE: Usuário em contexto ativo. Se disser "sim", "ok", "quero" — continue e aprofunde a resposta anterior.`
-    : `9. CONTINUIDADE: Sem contexto recente. Se usuário disser "sim", "ok", "quero" sem contexto claro, peça para detalhar o que quer.`;
+    ? `9. CONTINUIDADE: Usuário em contexto ativo. Se disser "sim", "ok", "quero" — continue e aprofunde.`
+    : `9. CONTINUIDADE: Sem contexto recente. Se usuário disser "sim", "ok", "quero" sem contexto claro, peça para detalhar.`;
 
   return `Você é a Cali, nutricionista clínica digital da Caloriax IA.
 
@@ -253,10 +291,10 @@ REGRAS:
 
 1. Responda DIRETAMENTE a: "${message}"
 2. Use **negrito** para valores e dados importantes
-3. ${isFirstMessage ? "Apresente-se brevemente como Cali, nutricionista do Caloriax." : "Não se apresente — já houve conversa."}
+3. ${presentationRule}
 4. Use o nome do usuário no início da resposta (máx 1x), se disponível
 
-${goalLine}
+${goalRule}
 
 6. SUGESTÃO DE REFEIÇÃO — só se pedido explícito:
    Gatilhos válidos: "o que comer?", "me dá um plano", "monta minha dieta", "o que como agora?", "me sugere algo"
@@ -271,7 +309,69 @@ ${goalLine}
    ✔ "carboidratos" (nunca "carbs")
    ✔ "gorduras" (nunca "fats")
    ✔ "emagrecimento", "ganho de massa muscular", "manutenção de peso"
-   ❌ NUNCA: "kcal", "maintain", "bulk", "cut", "cutting", "bulking", "deficit", "surplus", "lose_weight", "gain_muscle"
+   ❌ NUNCA: "kcal", "maintain", "bulk", "cut", "cutting", "bulking", "deficit", "surplus"
+
+${continuityRule}
+
+10. ESPECIALIDADE:
+    Somente alimentação, dieta, calorias, emagrecimento e ganho de massa.
+    Fora do tema: "Posso te ajudar com sua alimentação e dieta 😉"
+
+---
+
+${nutritionContext}`.trim();
+}
+
+// =========================
+// 🧠 PROMPT — SEM OBJETIVO
+// =========================
+
+function buildPromptWithoutGoal(params: {
+  message: string;
+  nutritionContext: string;
+  isFirstMessage: boolean;
+  recentContext: boolean;
+}): string {
+  const { message, nutritionContext, isFirstMessage, recentContext } = params;
+
+  const presentationRule = isFirstMessage
+    ? "Apresente-se brevemente como Cali, nutricionista do Caloriax."
+    : "Não se apresente — já houve conversa.";
+
+  const continuityRule = recentContext
+    ? `9. CONTINUIDADE: Usuário em contexto ativo. Se disser "sim", "ok", "quero" — continue e aprofunde.`
+    : `9. CONTINUIDADE: Sem contexto recente. Se usuário disser "sim", "ok", "quero" sem contexto claro, peça para detalhar.`;
+
+  return `Você é a Cali, nutricionista clínica digital da Caloriax IA.
+
+IDENTIDADE E VOZ:
+- Direta, objetiva, sem coaching e sem motivação genérica
+- Tom humano e confiante — nunca robótica ou teórica
+- Português Brasil
+- Máximo 5 linhas por resposta
+- Máximo 2 emojis
+
+REGRAS:
+
+1. Responda DIRETAMENTE a: "${message}"
+2. Use **negrito** para valores e dados importantes
+3. ${presentationRule}
+4. Use o nome do usuário no início da resposta (máx 1x), se disponível
+5. NÃO mencione objetivo nutricional nesta resposta
+
+6. SUGESTÃO DE REFEIÇÃO — só se pedido explícito:
+   Gatilhos válidos: "o que comer?", "me dá um plano", "monta minha dieta", "o que como agora?", "me sugere algo"
+   → Sem pedido explícito: use dados do dia. NUNCA invente comida.
+
+7. DADOS — use APENAS o que está no contexto abaixo. NUNCA invente, estime ou infira.
+   → Dado ausente: ignore completamente, não mencione
+
+8. LINGUAGEM OBRIGATÓRIA:
+   ✔ "calorias" (nunca "kcal")
+   ✔ "proteínas" (nunca "protein")
+   ✔ "carboidratos" (nunca "carbs")
+   ✔ "gorduras" (nunca "fats")
+   ❌ NUNCA: "kcal", "maintain", "bulk", "cut", "cutting", "bulking", "deficit", "surplus"
 
 ${continuityRule}
 
@@ -306,60 +406,62 @@ export default async function handler(req: any, res: any) {
 
     if (!message) return res.status(400).json({ error: "Mensagem é obrigatória" });
 
-    // --- Tradução segura de objetivo (protegida contra não-string)
-    const { label: goalLabel, focus: goalFocus } = translateGoal(user?.goal);
-
-    // --- Detecção de modo com regex exato ($ no final)
+    // --- Detecção de modo ANTES de qualquer processamento
     const mode = detectMode(message);
 
-    // =========================
-    // 🚪 MODO SAUDAÇÃO
-    // Sem IA, sem contexto nutricional, resposta direta
-    // Formato: "Bom dia, Nome! ☀️ Como posso te ajudar hoje?"
-    // =========================
-
+    // CORREÇÃO 3: greeting retorna com resetContext = true
+    // Zero IA, zero contexto, zero histórico enviado
     if (mode === "greeting") {
       const { greeting, emoji } = getTimedGreeting();
       const namePart = user?.name ? `, ${user.name}` : "";
       return res.status(200).json({
         result: `${greeting}${namePart}! ${emoji} Como posso te ajudar hoje?`,
+        resetContext: true,
       });
     }
 
+    // --- Tradução de objetivo (só executa se NÃO for greeting)
+    const { label: goalLabel, focus: goalFocus } = translateGoal(user?.goal);
+
     // =========================
     // 🥗 MODO NUTRIÇÃO
-    // Backend decide tudo — IA só redige
     // =========================
 
-    const hasMeals       = meals.length > 0;
-    const hasAnalyses    = analyses && analyses.length > 0;
-    const macros         = calcMacros(meals);
+    const hasMeals      = meals.length > 0;
+    const hasAnalyses   = analyses && analyses.length > 0;
+    const macros        = calcMacros(meals);
+
+    // CORREÇÃO 1 + 2: safeHistory só inclui mensagens se houver contexto recente
+    // isFirstMessage baseado em hasRecentContext, não em history.length
     const recentContext  = hasRecentContext(history);
-    const isFirstMessage = history.length === 0;
+    const safeHistory    = recentContext ? history.slice(-6) : [];      // CORREÇÃO 1
+    const isFirstMessage = !recentContext;                              // CORREÇÃO 2
 
-    // FIX: regex para mensagem leve — cobre "okkk", "simm", "valeu!", "obrigado mano"
-    // FIX: goalLabel/goalFocus passados como "" quando includeGoal = false
-    //      → IA não recebe os valores, não pode vazar
-    const lightMessage = checkIsLightMessage(message);
-    const includeGoal  = !lightMessage;
+    const includeGoal = !checkIsLightMessage(message);
 
-    const nutritionContext = buildNutritionContext({
-      user, goalLabel, goalFocus, includeGoal,
-      meals, hasMeals, macros,
-      analyses, hasAnalyses,
-    });
+    let prompt: string;
 
-    const prompt = buildNutritionPrompt({
-      message,
-      goalLabel: includeGoal ? goalLabel : "",
-      goalFocus: includeGoal ? goalFocus : "",
-      includeGoal,
-      nutritionContext,
-      isFirstMessage,
-      recentContext,
-    });
+    if (includeGoal) {
+      const nutritionContext = buildContextWithGoal({
+        user, goalLabel, goalFocus,
+        meals, hasMeals, macros,
+        analyses, hasAnalyses,
+      });
+      prompt = buildPromptWithGoal({
+        message, goalLabel, goalFocus,
+        nutritionContext, isFirstMessage, recentContext,
+      });
+    } else {
+      const nutritionContext = buildContextWithoutGoal({
+        user, meals, hasMeals, macros,
+        analyses, hasAnalyses,
+      });
+      prompt = buildPromptWithoutGoal({
+        message, nutritionContext, isFirstMessage, recentContext,
+      });
+    }
 
-    // --- Chamada OpenAI
+    // CORREÇÃO 4: usa safeHistory em vez de history.slice(-6) direto
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -370,7 +472,7 @@ export default async function handler(req: any, res: any) {
         model: "gpt-4o-mini",
         input: [
           { role: "system", content: prompt },
-          ...history.slice(-6).map((m: any) => ({
+          ...safeHistory.map((m: any) => ({                            // CORREÇÃO 4
             role: m.role === "user" ? "user" : "assistant",
             content: m.text,
           })),
