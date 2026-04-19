@@ -244,7 +244,10 @@ function buildPromptWithGoal(params: {
 
   const goalRule = isFirstMessage
     ? `5. NÃO mencione o objetivo do usuário nesta resposta, a menos que ele tenha perguntado algo nutricional explícito.`
-    : `5. OBJETIVO DO USUÁRIO: **${goalLabel}**
+    : `5. OBJETIVO DO USUÁRIO: **${goalLabel || "NÃO INFORMADO"}**
+   → Use EXATAMENTE este valor quando mencionar objetivo
+   → NUNCA reescreva, NUNCA interprete, NUNCA troque por sinônimos
+   → Se estiver "NÃO INFORMADO": não mencione objetivo em hipótese alguma
    → Mencione apenas quando a mensagem tiver intenção nutricional clara`;
 
   const continuityRule = recentContext
@@ -276,6 +279,14 @@ ${goalRule}
 7. DADOS — use APENAS o que está no contexto abaixo. NUNCA invente, estime ou infira.
    → Dado ausente: ignore completamente, não mencione
 
+7.1 DATA E HORA (REGRA CRÍTICA):
+   ❌ NUNCA informe data ou horário de refeições
+   ❌ NUNCA diga dias específicos como "19 de abril de 2026"
+   ❌ NUNCA diga horários como "às 10:00", "às 14:35"
+   ❌ NUNCA use o campo "date" para responder com data ou horário
+   ✔ Se perguntarem quando foi: diga que não tem essa informação disponível
+   ✔ Você pode dizer apenas: "última refeição", "refeição anterior", "recentemente"
+
 8. LINGUAGEM OBRIGATÓRIA:
    ✔ "calorias" (nunca "kcal")
    ✔ "proteínas" (nunca "protein")
@@ -289,6 +300,27 @@ ${continuityRule}
 10. ESPECIALIDADE:
     Somente alimentação, dieta, calorias, emagrecimento e ganho de massa.
     Fora do tema: "Posso te ajudar com sua alimentação e dieta 😉"
+
+12. OBJETIVO (REGRA CRÍTICA):
+    ❌ NUNCA use sinônimos ou variações como:
+       - "foco"
+       - "manutenção de peso"
+       - "déficit calórico"
+       - "superávit"
+       - "ganho de massa muscular"
+    ❌ NUNCA reformule o objetivo
+    ✔ Use EXATAMENTE um dos termos oficiais:
+       - "Perder peso"
+       - "Manter saúde"
+       - "Ganhar massa"
+    ✔ Se o usuário perguntar "qual meu objetivo?" ou "qual minha meta?":
+       → Responda diretamente: "Seu objetivo é ${goalLabel || "não informado"}."
+       → Sem explicação extra, sem interpretação
+    ✔ Se não houver objetivo: diga que não tem essa informação
+
+13. MARCA:
+    ❌ NUNCA diga apenas "Caloriax"
+    ✔ Sempre diga "Caloriax IA"
 
 ---
 
@@ -340,23 +372,12 @@ REGRAS:
    → Dado ausente: ignore completamente, não mencione
 
 7.1 DATA E HORA (REGRA CRÍTICA):
-❌ NUNCA informe data ou horário de refeições
-❌ NUNCA diga dias específicos como "19 de abril de 2026"
-❌ NUNCA diga horários como "às 10:00", "às 14:35"
-❌ NUNCA combine data + hora
-
-❌ NUNCA use o campo "date" para responder com data ou horário
-
-✔ Se perguntarem quando foi:
-→ Diga que não tem essa informação disponível
-
-✔ Você pode dizer apenas:
-- "última refeição"
-- "refeição anterior"
-- "recentemente" (se fizer sentido)
-
-✔ Exemplo correto:
-"Não tenho a data ou horário exato da sua última refeição."
+   ❌ NUNCA informe data ou horário de refeições
+   ❌ NUNCA diga dias específicos como "19 de abril de 2026"
+   ❌ NUNCA diga horários como "às 10:00", "às 14:35"
+   ❌ NUNCA use o campo "date" para responder com data ou horário
+   ✔ Se perguntarem quando foi: diga que não tem essa informação disponível
+   ✔ Você pode dizer apenas: "última refeição", "refeição anterior", "recentemente"
 
 8. LINGUAGEM OBRIGATÓRIA:
    ✔ "calorias" (nunca "kcal")
@@ -371,6 +392,26 @@ ${continuityRule}
 10. ESPECIALIDADE:
     Somente alimentação, dieta, calorias, emagrecimento e ganho de massa.
     Fora do tema: "Posso te ajudar com sua alimentação e dieta 😉"
+
+12. OBJETIVO (REGRA CRÍTICA):
+    ❌ NUNCA use sinônimos ou variações como:
+       - "foco"
+       - "manutenção de peso"
+       - "déficit calórico"
+       - "superávit"
+       - "ganho de massa muscular"
+    ❌ NUNCA reformule o objetivo
+    ✔ Use EXATAMENTE um dos termos oficiais:
+       - "Perder peso"
+       - "Manter saúde"
+       - "Ganhar massa"
+    ✔ Se o usuário perguntar "qual meu objetivo?" ou "qual minha meta?":
+       → Responda: "Não tenho essa informação disponível."
+    ✔ Se não houver objetivo: diga que não tem essa informação
+
+13. MARCA:
+    ❌ NUNCA diga apenas "Caloriax"
+    ✔ Sempre diga "Caloriax IA"
 
 ---
 
@@ -428,7 +469,13 @@ export default async function handler(req: any, res: any) {
     const safeHistory    = recentContext ? history.slice(-6) : [];
     const isFirstMessage = history.length === 0;
 
-    const includeGoal = recentContext || hasGoalIntent(message);
+    let includeGoal = recentContext || hasGoalIntent(message);
+
+    const hasValidGoal = ["Perder peso", "Manter saúde", "Ganhar massa"].includes(goalLabel);
+
+if (!hasValidGoal) {
+  includeGoal = false;
+}
 
     let prompt: string;
 
@@ -481,6 +528,32 @@ export default async function handler(req: any, res: any) {
       "Erro ao responder.";
 
     let finalResult = result;
+
+    // =========================
+// 🔒 PÓS-FILTRO CRÍTICO (ANTI-ALUCINAÇÃO)
+// =========================
+
+// Bloqueia qualquer data/hora
+finalResult = finalResult.replace(
+  /\b\d{1,2}\s+de\s+\w+\s+de\s+\d{4}\b/g,
+  "data não disponível"
+);
+
+finalResult = finalResult.replace(
+  /\bàs?\s*\d{1,2}:\d{2}\b/g,
+  "horário não disponível"
+);
+
+// Bloqueia termos proibidos de objetivo
+finalResult = finalResult
+  .replace(/manutenção de peso/gi, "Manter saúde")
+  .replace(/déficit calórico/gi, "Perder peso")
+  .replace(/superávit/gi, "Ganhar massa")
+  .replace(/ganho de massa muscular/gi, "Ganhar massa")
+  .replace(/foco/gi, "objetivo");
+
+// Garante marca correta
+finalResult = finalResult.replace(/Caloriax(?! IA)/g, "Caloriax IA");
 
     if (missingUserData && needsUserProfile(message)) {
       finalResult = `Para te ajudar melhor, complete seus dados em "Meu Perfil". 😉`;
