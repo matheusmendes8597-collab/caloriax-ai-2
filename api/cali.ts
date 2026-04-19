@@ -9,13 +9,6 @@ export const config = {
 declare const process: any;
 
 // =========================
-// 🛡 TERMOS PROIBIDOS
-// =========================
-
-const RAW_GOAL_LEAK_PATTERN =
-  /\b(maintain|maintenance|bulk|bulking|cut|cutting|deficit|surplus|lose_weight|gain_muscle|recomp)\b/i;
-
-// =========================
 // 🎯 NORMALIZAÇÃO DE OBJETIVO
 // =========================
 
@@ -30,60 +23,15 @@ function normalizeGoalKey(raw: any): string {
 }
 
 const goalMap: Record<string, string> = {
-  emagrecer: "emagrecimento",
-  emagrecimento: "emagrecimento",
-  "perder peso": "emagrecimento",
-  "ganhar massa": "ganho de massa muscular",
-  "ganho de massa": "ganho de massa muscular",
-  "ganho muscular": "ganho de massa muscular",
-  manutencao: "manutenção de peso",
-  "manter peso": "manutenção de peso",
-  "manter saude": "manutenção de peso",
-  manter: "manutenção de peso",
-  equilibrio: "equilíbrio alimentar",
-  "alimentacao saudavel": "alimentação saudável",
-  cut: "emagrecimento",
-  cutting: "emagrecimento",
-  deficit: "emagrecimento",
-  "lose weight": "emagrecimento",
-  "lose fat": "emagrecimento",
-  "weight loss": "emagrecimento",
-  bulk: "ganho de massa muscular",
-  bulking: "ganho de massa muscular",
-  surplus: "ganho de massa muscular",
-  "gain muscle": "ganho de massa muscular",
-  "gain mass": "ganho de massa muscular",
-  "muscle gain": "ganho de massa muscular",
-  maintain: "manutenção de peso",
-  maintenance: "manutenção de peso",
-  "maintain weight": "manutenção de peso",
-  "keep weight": "manutenção de peso",
-  recomp: "recomposição corporal",
-  recomposicao: "recomposição corporal",
-  "recomposicao corporal": "recomposição corporal",
-  "body recomposition": "recomposição corporal",
+  "lose weight": "Perder peso",
+  "maintain":    "Manter saúde",
+  "gain muscle": "Ganhar massa",
 };
 
-const goalFocusMap: Record<string, string> = {
-  "emagrecimento":           "déficit calórico",
-  "ganho de massa muscular": "proteína e superávit calórico",
-  "manutenção de peso":      "equilíbrio entre calorias e nutrientes",
-  "equilíbrio alimentar":    "equilíbrio nutricional",
-  "alimentação saudável":    "equilíbrio nutricional",
-  "recomposição corporal":   "proteína alta com calorias controladas",
-};
-
-function translateGoal(raw: any): { label: string; focus: string } {
-  const safeRaw = typeof raw === "string" ? raw : "";
-  const key     = normalizeGoalKey(safeRaw);
-  const label   = goalMap[key] ?? "alimentação saudável";
-  const focus   = goalFocusMap[label] ?? "equilíbrio nutricional";
-
-  if (RAW_GOAL_LEAK_PATTERN.test(label) || RAW_GOAL_LEAK_PATTERN.test(focus)) {
-    return { label: "alimentação saudável", focus: "equilíbrio nutricional" };
-  }
-
-  return { label, focus };
+function translateGoal(raw: any): { label: string } {
+  const key   = normalizeGoalKey(raw);
+  const label = goalMap[key];
+  return { label: label ?? "" };
 }
 
 // =========================
@@ -111,6 +59,14 @@ function detectMode(message: string): "greeting" | "nutrition" {
 function checkIsLightMessage(msg: string): boolean {
   const n = msg.toLowerCase().trim();
   return /^(sim+|s+|ok+[!]*|okay|valeu+[!]*|obrigad[oa]+(\s+\w+)*|certo+|entendi+|show+|boa+|top+|perfeito+|massa+)$/.test(n);
+}
+
+// =========================
+// 🎯 INTENÇÃO DE OBJETIVO
+// =========================
+
+function hasGoalIntent(message: string): boolean {
+  return /emagrec|massa|objetivo|meta|ganhar|perder/.test(message.toLowerCase());
 }
 
 // =========================
@@ -154,6 +110,26 @@ function hasRecentContext(history: any[]): boolean {
   if (!last?.timestamp) return history.length >= 2;
   const elapsed = Date.now() - new Date(last.timestamp).getTime();
   return elapsed < 1000 * 60 * 10;
+}
+
+// =========================
+// 👤 VALIDAÇÃO DE DADOS DO USUÁRIO
+// =========================
+
+function isMissingEssentialUserData(user: any): boolean {
+  return !user?.name || !user?.age || !user?.weight;
+}
+
+function needsUserProfile(message: string): boolean {
+  const n = message.toLowerCase();
+
+  const strongIntent =
+    /imc|peso ideal|meta|objetivo/.test(n);
+
+  const planIntent =
+    /plano alimentar|dieta personalizada/.test(n);
+
+  return strongIntent || planIntent;
 }
 
 // =========================
@@ -206,14 +182,13 @@ function buildSharedContext(params: {
 function buildContextWithGoal(params: {
   user: any;
   goalLabel: string;
-  goalFocus: string;
   meals: any[];
   hasMeals: boolean;
   macros: ReturnType<typeof calcMacros>;
   analyses: any[];
   hasAnalyses: boolean;
 }): string {
-  const { user, goalLabel, goalFocus, meals, hasMeals, macros, analyses, hasAnalyses } = params;
+  const { user, goalLabel, meals, hasMeals, macros, analyses, hasAnalyses } = params;
 
   const userCtx = `DADOS DO USUÁRIO:
 Nome: ${user?.name ?? "Não informado"}
@@ -221,8 +196,7 @@ Idade: ${user?.age ?? "Não informado"} anos
 Peso: ${user?.weight ?? "Não informado"} kg
 Altura: ${user?.height ?? "Não informado"} cm
 Peso ideal: ${user?.ideal_weight ?? "Não informado"} kg
-Objetivo: ${goalLabel}
-Foco nutricional: ${goalFocus}`;
+${goalLabel ? `Objetivo: ${goalLabel}` : ""}`.trimEnd();
 
   return buildSharedContext({ userCtx, meals, hasMeals, macros, analyses, hasAnalyses });
 }
@@ -258,20 +232,19 @@ Peso ideal: ${user?.ideal_weight ?? "Não informado"} kg`;
 function buildPromptWithGoal(params: {
   message: string;
   goalLabel: string;
-  goalFocus: string;
   nutritionContext: string;
   isFirstMessage: boolean;
   recentContext: boolean;
 }): string {
-  const { message, goalLabel, goalFocus, nutritionContext, isFirstMessage, recentContext } = params;
+  const { message, goalLabel, nutritionContext, isFirstMessage, recentContext } = params;
 
   const presentationRule = isFirstMessage
-    ? "Apresente-se brevemente como Cali, nutricionista do Caloriax."
+    ? "Apresente-se brevemente como Cali, nutricionista da Caloriax IA."
     : "Não se apresente — já houve conversa.";
 
   const goalRule = isFirstMessage
     ? `5. NÃO mencione o objetivo do usuário nesta resposta, a menos que ele tenha perguntado algo nutricional explícito.`
-    : `5. OBJETIVO DO USUÁRIO: **${goalLabel}** | Foco: ${goalFocus}
+    : `5. OBJETIVO DO USUÁRIO: **${goalLabel}**
    → Mencione apenas quando a mensagem tiver intenção nutricional clara`;
 
   const continuityRule = recentContext
@@ -303,17 +276,12 @@ ${goalRule}
 7. DADOS — use APENAS o que está no contexto abaixo. NUNCA invente, estime ou infira.
    → Dado ausente: ignore completamente, não mencione
 
-7.1 DADOS TEMPORAIS E ESPECÍFICOS:
-   - Só informe horários, datas ou ordem de eventos se estiverem EXPLICITAMENTE presentes no contexto
-   - Se não houver informação clara: responda que não tem esse dado
-   - NUNCA invente horários, datas ou sequência de refeições
-
 8. LINGUAGEM OBRIGATÓRIA:
    ✔ "calorias" (nunca "kcal")
    ✔ "proteínas" (nunca "protein")
    ✔ "carboidratos" (nunca "carbs")
    ✔ "gorduras" (nunca "fats")
-   ✔ "emagrecimento", "ganho de massa muscular", "manutenção de peso"
+   ✔ "Perder peso", "Manter saúde", "Ganhar massa"
    ❌ NUNCA: "kcal", "maintain", "bulk", "cut", "cutting", "bulking", "deficit", "surplus"
 
 ${continuityRule}
@@ -321,10 +289,6 @@ ${continuityRule}
 10. ESPECIALIDADE:
     Somente alimentação, dieta, calorias, emagrecimento e ganho de massa.
     Fora do tema: "Posso te ajudar com sua alimentação e dieta 😉"
-
-11. EVITE GENERALIZAÇÕES:
-   - Não dê conselhos genéricos como "é importante", "o ideal é"
-   - Seja direto e baseado apenas nos dados do usuário
 
 ---
 
@@ -344,7 +308,7 @@ function buildPromptWithoutGoal(params: {
   const { message, nutritionContext, isFirstMessage, recentContext } = params;
 
   const presentationRule = isFirstMessage
-    ? "Apresente-se brevemente como Cali, nutricionista do Caloriax."
+    ? "Apresente-se brevemente como Cali, nutricionista da Caloriax IA."
     : "Não se apresente — já houve conversa.";
 
   const continuityRule = recentContext
@@ -380,6 +344,7 @@ REGRAS:
    ✔ "proteínas" (nunca "protein")
    ✔ "carboidratos" (nunca "carbs")
    ✔ "gorduras" (nunca "fats")
+   ✔ "Perder peso", "Manter saúde", "Ganhar massa"
    ❌ NUNCA: "kcal", "maintain", "bulk", "cut", "cutting", "bulking", "deficit", "surplus"
 
 ${continuityRule}
@@ -415,6 +380,8 @@ export default async function handler(req: any, res: any) {
 
     if (!message) return res.status(400).json({ error: "Mensagem é obrigatória" });
 
+    const missingUserData = isMissingEssentialUserData(user);
+
     // --- Detecção de modo ANTES de qualquer processamento
     const mode = detectMode(message);
 
@@ -428,7 +395,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // --- Tradução de objetivo (só executa se NÃO for greeting)
-    const { label: goalLabel, focus: goalFocus } = translateGoal(user?.goal);
+    const { label: goalLabel } = translateGoal(user?.goal);
 
     // =========================
     // 🥗 MODO NUTRIÇÃO
@@ -440,20 +407,20 @@ export default async function handler(req: any, res: any) {
 
     const recentContext  = hasRecentContext(history);
     const safeHistory    = recentContext ? history.slice(-6) : [];
-    const isFirstMessage = !recentContext;
+    const isFirstMessage = history.length === 0;
 
-    const includeGoal = recentContext || !checkIsLightMessage(message);
+    const includeGoal = recentContext || hasGoalIntent(message);
 
     let prompt: string;
 
     if (includeGoal) {
       const nutritionContext = buildContextWithGoal({
-        user, goalLabel, goalFocus,
+        user, goalLabel,
         meals, hasMeals, macros,
         analyses, hasAnalyses,
       });
       prompt = buildPromptWithGoal({
-        message, goalLabel, goalFocus,
+        message, goalLabel,
         nutritionContext, isFirstMessage, recentContext,
       });
     } else {
@@ -494,7 +461,13 @@ export default async function handler(req: any, res: any) {
         .join("") ||
       "Erro ao responder.";
 
-    return res.status(200).json({ result });
+    let finalResult = result;
+
+    if (missingUserData && needsUserProfile(message)) {
+      finalResult = `Para te ajudar melhor, complete seus dados em "Meu Perfil". 😉`;
+    }
+
+    return res.status(200).json({ result: finalResult });
 
   } catch (error: any) {
     return res.status(500).json({ error: "Erro geral", details: error.message });
