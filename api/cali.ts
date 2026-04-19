@@ -235,8 +235,9 @@ function buildPromptWithGoal(params: {
   nutritionContext: string;
   isFirstMessage: boolean;
   recentContext: boolean;
+  hasMeals: boolean;
 }): string {
-  const { message, goalLabel, nutritionContext, isFirstMessage, recentContext } = params;
+  const { message, goalLabel, nutritionContext, isFirstMessage, recentContext, hasMeals } = params;
 
   const presentationRule = isFirstMessage
     ? "Apresente-se brevemente como Cali, nutricionista da Caloriax IA."
@@ -253,6 +254,38 @@ function buildPromptWithGoal(params: {
   const continuityRule = recentContext
     ? `9. CONTINUIDADE: Usuário em contexto ativo. Se disser "sim", "ok", "quero" — continue e aprofunde.`
     : `9. CONTINUIDADE: Sem contexto recente. Se usuário disser "sim", "ok", "quero" sem contexto claro, peça para detalhar.`;
+
+  const intelligentAnalysisRule = hasMeals
+    ? `14. ANÁLISE INTELIGENTE (REGRA CRÍTICA):
+    Sempre que houver dados de consumo (calorias, proteínas, carboidratos ou gorduras):
+
+    ✔ Compare com o objetivo do usuário
+    ✔ Diga se está:
+       - abaixo do ideal
+       - adequado
+       - acima do ideal
+
+    ✔ Dê uma direção clara e curta (1 frase no máximo)
+    ✔ A análise deve vir DEPOIS dos dados, nunca antes
+    ✔ Ocupa no máximo 1 linha
+    ✔ Seja direto — sem explicação longa
+
+    EXEMPLOS:
+    - "Proteínas em **113g**, abaixo do ideal para Ganhar massa — aumente nas próximas refeições."
+    - "Calorias dentro de um bom nível para Manter saúde."
+    - "Consumo elevado para Perder peso — reduza calorias nas próximas refeições."
+
+    GUIA DE INTERPRETAÇÃO POR OBJETIVO (qualitativo, sem fórmulas):
+    → Perder peso: calorias altas = ruim | proteínas altas = ok
+    → Ganhar massa: proteínas baixas = ruim | calorias baixas = ruim
+    → Manter saúde: tudo equilibrado = ok
+
+    ❌ NUNCA invente números ideais
+    ❌ NUNCA calcule meta calórica
+    ❌ NUNCA use IMC
+    ❌ NUNCA invente meta de proteína
+    ✔ Apenas interpretação qualitativa`
+    : `14. ANÁLISE INTELIGENTE: Sem refeições registradas — NÃO faça análise de consumo.`;
 
   return `Você é a Cali, nutricionista clínica digital da Caloriax IA.
 
@@ -322,6 +355,8 @@ ${continuityRule}
     ❌ NUNCA diga apenas "Caloriax"
     ✔ Sempre diga "Caloriax IA"
 
+${intelligentAnalysisRule}
+
 ---
 
 ${nutritionContext}`.trim();
@@ -336,8 +371,9 @@ function buildPromptWithoutGoal(params: {
   nutritionContext: string;
   isFirstMessage: boolean;
   recentContext: boolean;
+  hasMeals: boolean;
 }): string {
-  const { message, nutritionContext, isFirstMessage, recentContext } = params;
+  const { message, nutritionContext, isFirstMessage, recentContext, hasMeals } = params;
 
   const presentationRule = isFirstMessage
     ? "Apresente-se brevemente como Cali, nutricionista da Caloriax IA."
@@ -346,6 +382,34 @@ function buildPromptWithoutGoal(params: {
   const continuityRule = recentContext
     ? `9. CONTINUIDADE: Usuário em contexto ativo. Se disser "sim", "ok", "quero" — continue e aprofunde.`
     : `9. CONTINUIDADE: Sem contexto recente. Se usuário disser "sim", "ok", "quero" sem contexto claro, peça para detalhar.`;
+
+  const intelligentAnalysisRule = hasMeals
+    ? `14. ANÁLISE INTELIGENTE (REGRA CRÍTICA):
+    Sempre que houver dados de consumo (calorias, proteínas, carboidratos ou gorduras):
+
+    ✔ Diga se o consumo está:
+       - abaixo do esperado para o dia
+       - em um nível adequado
+       - acima do esperado para o dia
+
+    ✔ Dê uma direção clara e curta (1 frase no máximo)
+    ✔ A análise deve vir DEPOIS dos dados, nunca antes
+    ✔ Ocupa no máximo 1 linha
+    ✔ Seja direto — sem explicação longa
+    ✔ Como o objetivo não está disponível, use linguagem genérica e equilibrada
+
+    EXEMPLOS:
+    - "Proteínas em **113g** — bom nível para o dia."
+    - "Calorias em **2175** — consumo elevado, considere refeições mais leves."
+    - "Gorduras em **80g** — dentro de um nível razoável."
+
+    ❌ NUNCA invente números ideais
+    ❌ NUNCA calcule meta calórica
+    ❌ NUNCA use IMC
+    ❌ NUNCA invente meta de proteína
+    ❌ NUNCA mencione objetivo nutricional nesta resposta
+    ✔ Apenas interpretação qualitativa`
+    : `14. ANÁLISE INTELIGENTE: Sem refeições registradas — NÃO faça análise de consumo.`;
 
   return `Você é a Cali, nutricionista clínica digital da Caloriax IA.
 
@@ -413,6 +477,8 @@ ${continuityRule}
     ❌ NUNCA diga apenas "Caloriax"
     ✔ Sempre diga "Caloriax IA"
 
+${intelligentAnalysisRule}
+
 ---
 
 ${nutritionContext}`.trim();
@@ -473,9 +539,9 @@ export default async function handler(req: any, res: any) {
 
     const hasValidGoal = ["Perder peso", "Manter saúde", "Ganhar massa"].includes(goalLabel);
 
-if (!hasValidGoal) {
-  includeGoal = false;
-}
+    if (!hasValidGoal) {
+      includeGoal = false;
+    }
 
     let prompt: string;
 
@@ -488,6 +554,7 @@ if (!hasValidGoal) {
       prompt = buildPromptWithGoal({
         message, goalLabel,
         nutritionContext, isFirstMessage, recentContext,
+        hasMeals,
       });
     } else {
       const nutritionContext = buildContextWithoutGoal({
@@ -496,6 +563,7 @@ if (!hasValidGoal) {
       });
       prompt = buildPromptWithoutGoal({
         message, nutritionContext, isFirstMessage, recentContext,
+        hasMeals,
       });
     }
 
@@ -530,30 +598,30 @@ if (!hasValidGoal) {
     let finalResult = result;
 
     // =========================
-// 🔒 PÓS-FILTRO CRÍTICO (ANTI-ALUCINAÇÃO)
-// =========================
+    // 🔒 PÓS-FILTRO CRÍTICO (ANTI-ALUCINAÇÃO)
+    // =========================
 
-// Bloqueia qualquer data/hora
-finalResult = finalResult.replace(
-  /\b\d{1,2}\s+de\s+\w+\s+de\s+\d{4}\b/g,
-  "data não disponível"
-);
+    // Bloqueia qualquer data/hora
+    finalResult = finalResult.replace(
+      /\b\d{1,2}\s+de\s+\w+\s+de\s+\d{4}\b/g,
+      "data não disponível"
+    );
 
-finalResult = finalResult.replace(
-  /\bàs?\s*\d{1,2}:\d{2}\b/g,
-  "horário não disponível"
-);
+    finalResult = finalResult.replace(
+      /\bàs?\s*\d{1,2}:\d{2}\b/g,
+      "horário não disponível"
+    );
 
-// Bloqueia termos proibidos de objetivo
-finalResult = finalResult
-  .replace(/manutenção de peso/gi, "Manter saúde")
-  .replace(/déficit calórico/gi, "Perder peso")
-  .replace(/superávit/gi, "Ganhar massa")
-  .replace(/ganho de massa muscular/gi, "Ganhar massa")
-  .replace(/foco/gi, "objetivo");
+    // Bloqueia termos proibidos de objetivo
+    finalResult = finalResult
+      .replace(/manutenção de peso/gi, "Manter saúde")
+      .replace(/déficit calórico/gi, "Perder peso")
+      .replace(/superávit/gi, "Ganhar massa")
+      .replace(/ganho de massa muscular/gi, "Ganhar massa")
+      .replace(/foco/gi, "objetivo");
 
-// Garante marca correta
-finalResult = finalResult.replace(/Caloriax(?! IA)/g, "Caloriax IA");
+    // Garante marca correta
+    finalResult = finalResult.replace(/Caloriax(?! IA)/g, "Caloriax IA");
 
     if (missingUserData && needsUserProfile(message)) {
       finalResult = `Para te ajudar melhor, complete seus dados em "Meu Perfil". 😉`;
