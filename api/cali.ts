@@ -409,8 +409,6 @@ export default async function handler(req: any, res: any) {
     // --- Detecção de modo ANTES de qualquer processamento
     const mode = detectMode(message);
 
-    // CORREÇÃO 3: greeting retorna com resetContext = true
-    // Zero IA, zero contexto, zero histórico enviado
     if (mode === "greeting") {
       const { greeting, emoji } = getTimedGreeting();
       const namePart = user?.name ? `, ${user.name}` : "";
@@ -431,13 +429,11 @@ export default async function handler(req: any, res: any) {
     const hasAnalyses   = analyses && analyses.length > 0;
     const macros        = calcMacros(meals);
 
-    // CORREÇÃO 1 + 2: safeHistory só inclui mensagens se houver contexto recente
-    // isFirstMessage baseado em hasRecentContext, não em history.length
     const recentContext  = hasRecentContext(history);
-    const safeHistory    = recentContext ? history.slice(-6) : [];      // CORREÇÃO 1
-    const isFirstMessage = !recentContext;                              // CORREÇÃO 2
+    const safeHistory    = recentContext ? history.slice(-6) : [];
+    const isFirstMessage = !recentContext;
 
-    const includeGoal = !checkIsLightMessage(message);
+    const includeGoal = recentContext || !checkIsLightMessage(message);
 
     let prompt: string;
 
@@ -461,7 +457,6 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // CORREÇÃO 4: usa safeHistory em vez de history.slice(-6) direto
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -472,7 +467,7 @@ export default async function handler(req: any, res: any) {
         model: "gpt-4o-mini",
         input: [
           { role: "system", content: prompt },
-          ...safeHistory.map((m: any) => ({                            // CORREÇÃO 4
+          ...safeHistory.map((m: any) => ({
             role: m.role === "user" ? "user" : "assistant",
             content: m.text,
           })),
