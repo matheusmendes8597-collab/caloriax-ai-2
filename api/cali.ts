@@ -9,6 +9,39 @@ export const config = {
 declare const process: any;
 
 // =========================
+// 🕐 HORÁRIO DO BRASIL (UTC-safe)
+// =========================
+
+function getBrazilTime(): { hour: number; minute: number } {
+  const now = new Date();
+
+  const formatter = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(now);
+
+  const hour = Number(parts.find((p) => p.type === "hour")?.value);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value);
+
+  return { hour, minute };
+}
+
+function getMealPeriod(): string {
+  const { hour } = getBrazilTime();
+
+  if (hour >= 5 && hour < 11) return "café da manhã";
+  if (hour >= 11 && hour < 15) return "almoço";
+  if (hour >= 15 && hour < 18) return "tarde";
+  if (hour >= 18 && hour < 22) return "jantar";
+
+  return "noite";
+}
+
+// =========================
 // 🎯 NORMALIZAÇÃO DE OBJETIVO
 // =========================
 
@@ -80,13 +113,7 @@ function hasGoalIntent(message: string): boolean {
 // =========================
 
 function getTimedGreeting(): { greeting: string; emoji: string } {
-  const hour = Number(
-    new Intl.DateTimeFormat("pt-BR", {
-      timeZone: "America/Sao_Paulo",
-      hour: "numeric",
-      hour12: false,
-    }).format(new Date())
-  );
+  const { hour } = getBrazilTime();
 
   if (hour >= 5 && hour < 13) return { greeting: "Bom dia", emoji: "☀️" };
   if (hour >= 13 && hour < 18) return { greeting: "Boa tarde", emoji: "🌤️" };
@@ -150,6 +177,11 @@ function buildSharedContext(params: {
 }): string {
   const { userCtx, meals, hasMeals, macros, analyses, hasAnalyses } = params;
 
+  const period = getMealPeriod();
+
+  const timeCtx = `CONTEXTO DE HORÁRIO:
+- Período atual: ${period}`;
+
   const summaryCtx = hasMeals
     ? `TOTAIS DO DIA (não recalcule — valores exatos do backend):
 - Calorias: ${macros.calories}
@@ -182,7 +214,7 @@ function buildSharedContext(params: {
         .join("\n")}`
     : "";
 
-  return [userCtx, summaryCtx, mealsCtx, analysesCtx]
+  return [userCtx, timeCtx, summaryCtx, mealsCtx, analysesCtx]
     .filter(Boolean)
     .join("\n\n");
 }
@@ -262,6 +294,61 @@ Peso ideal: ${user?.ideal_weight ?? "Não informado"} kg`;
 }
 
 // =========================
+// 🧠 BLOCOS DE PROMPT REUTILIZÁVEIS
+// =========================
+
+const PRIVACY_TIME_RULE = `REGRA CRÍTICA DE PRIVACIDADE E NATURALIDADE:
+
+❌ NUNCA mencione horários exatos (ex: 10:30, 14h, 22:15)
+❌ NUNCA mencione datas específicas
+❌ NUNCA diga quando algo aconteceu com precisão numérica
+
+✔ Mesmo que você saiba o horário exato, NÃO use
+
+✔ Em vez disso, use linguagem natural:
+- "recentemente"
+- "mais cedo"
+- "hoje"
+- "agora há pouco"
+
+✔ Para refeições:
+- prefira: "no café da manhã", "no almoço", "mais cedo hoje"
+
+✔ A resposta deve soar humana, não técnica`;
+
+const SMART_TIME_CONTEXT_RULE = `CONTEXTO DE HORÁRIO (USO INTELIGENTE):
+
+✔ Existe um período atual do dia disponível no contexto (ex: café da manhã, almoço, noite)
+
+✔ Use esse contexto APENAS se fizer sentido para a resposta
+
+✔ Situações onde DEVE usar:
+- Quando sugerir refeições
+- Quando o usuário perguntar o que comer
+- Quando analisar alimentação do dia
+
+✔ Situações onde NÃO deve usar:
+- Respostas curtas (ex: "sim", "ok")
+- Perguntas diretas que não envolvem refeição
+- Quando não agrega valor
+
+✔ Nunca force menção ao horário
+
+✔ Nunca diga horas exatas (ex: 13h, 10:30)
+
+✔ Se usar, mencione de forma natural:
+- "agora no almoço"
+- "nesse momento do dia"
+- "mais tarde"
+
+✔ Se usar o contexto de horário deixar a frase artificial, NÃO use`;
+
+const TIME_RULE = `REGRA DE TEMPO:
+
+✔ Use o período do dia (manhã, almoço, noite) para adaptar respostas
+✔ Nunca use números de horário`;
+
+// =========================
 // 🧠 PROMPT — COM OBJETIVO
 // =========================
 
@@ -328,6 +415,12 @@ REGRAS:
 ${goalRule}
 6. CONTINUIDADE: ${continuityRule}
 7. ${intelligentAnalysisRule}
+
+${PRIVACY_TIME_RULE}
+
+${SMART_TIME_CONTEXT_RULE}
+
+${TIME_RULE}
 ---
 ${nutritionContext}
 `.trim();
@@ -388,6 +481,12 @@ REGRAS:
 3. ${presentationRule}
 4. CONTINUIDADE: ${continuityRule}
 5. ${intelligentAnalysisRule}
+
+${PRIVACY_TIME_RULE}
+
+${SMART_TIME_CONTEXT_RULE}
+
+${TIME_RULE}
 ---
 ${nutritionContext}
 `.trim();
@@ -524,15 +623,8 @@ export default async function handler(req: any, res: any) {
 
     let finalResult = result;
 
-    finalResult = finalResult.replace(
-      /\b\d{1,2}\s+de\s+\w+\s+de\s+\d{4}\b/g,
-      "data não disponível"
-    );
-
-    finalResult = finalResult.replace(
-      /\bàs?\s*\d{1,2}:\d{2}\b/g,
-      "horário não disponível"
-    );
+    // 🔒 Fallback de segurança (caso IA tente expor horário)
+    finalResult = finalResult.replace(/\b\d{1,2}:\d{2}\b/g, "");
 
     finalResult = finalResult
       .replace(/manutenção de peso/gi, "Manter saúde")
