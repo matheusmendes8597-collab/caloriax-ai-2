@@ -534,7 +534,6 @@ if (!isNutritionIntent) {
     const missingUserData = isMissingEssentialUserData(user);
 
     // --- Detecção de modo ANTES de qualquer processamento
-    const mode = detectMode(message);
     if (mode === "blocked") {
   return res.status(200).json({
     result: "Posso te ajudar apenas com alimentação, dieta e nutrição 😉",
