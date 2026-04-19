@@ -46,11 +46,10 @@ const NUTRITION_INTENT_PATTERN =
 
 function detectMode(message: string): "greeting" | "nutrition" {
   const n = message.toLowerCase().trim();
-  const isGreeting         = GREETING_PATTERN.test(n);
-  const hasNutritionIntent = NUTRITION_INTENT_PATTERN.test(n);
-  if (isGreeting && !hasNutritionIntent) return "greeting";
-if (!hasNutritionIntent) return "blocked";
-return "nutrition";
+  const isGreeting = GREETING_PATTERN.test(n);
+
+  if (isGreeting) return "greeting";
+  return "nutrition";
 }
 
 if (mode === "blocked") {
