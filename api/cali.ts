@@ -49,7 +49,14 @@ function detectMode(message: string): "greeting" | "nutrition" {
   const isGreeting         = GREETING_PATTERN.test(n);
   const hasNutritionIntent = NUTRITION_INTENT_PATTERN.test(n);
   if (isGreeting && !hasNutritionIntent) return "greeting";
-  return "nutrition";
+if (!hasNutritionIntent) return "blocked";
+return "nutrition";
+}
+
+if (mode === "blocked") {
+  return res.status(200).json({
+    result: "Posso te ajudar apenas com alimentação, dieta e nutrição 😉",
+  });
 }
 
 // =========================
@@ -518,6 +525,14 @@ export default async function handler(req: any, res: any) {
     const history  = body.history || [];
 
     if (!message) return res.status(400).json({ error: "Mensagem é obrigatória" });
+    const isNutritionIntent = NUTRITION_INTENT_PATTERN.test(message.toLowerCase());
+
+// 🚫 BLOQUEIO GLOBAL FORA DE NUTRIÇÃO
+if (!isNutritionIntent) {
+  return res.status(200).json({
+    result: "Posso te ajudar apenas com alimentação, dieta e nutrição 😉",
+  });
+}
 
     const missingUserData = isMissingEssentialUserData(user);
 
