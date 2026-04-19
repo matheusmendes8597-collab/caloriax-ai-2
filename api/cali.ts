@@ -33,12 +33,11 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: "Mensagem é obrigatória" });
     }
 
-    const hasHistory = history.length > 0;
     const hasAnalyses = analyses && analyses.length > 0;
     const hasMeals = meals.length > 0;
 
     // =========================
-    // 📊 CÁLCULO DE MACROS (só se houver meals)
+    // 📊 CÁLCULO DE MACROS BRUTOS
     // =========================
 
     const totalCalories = hasMeals
@@ -55,70 +54,64 @@ export default async function handler(req: any, res: any) {
       : 0;
 
     // =========================
-    // 🧮 INTERPRETAÇÃO AUTOMÁTICA
+    // 🎯 OBJETIVO DO USUÁRIO
     // =========================
 
-    const goalCalories =
+    const goalLabel = user?.goal ?? "alimentação saudável";
+
+    const goalFocus =
       user?.goal === "emagrecer"
-        ? 1700
+        ? "foco em déficit calórico"
         : user?.goal === "ganhar massa"
-        ? 2800
-        : 2200;
-
-    const remainingCalories = goalCalories - totalCalories;
-
-    const calorieStatus =
-      totalCalories < goalCalories * 0.85
-        ? "déficit calórico"
-        : totalCalories <= goalCalories * 1.05
-        ? "dentro da meta"
-        : "superávit calórico";
-
-    const proteinStatus =
-      totalProtein < 80
-        ? "baixa (abaixo do recomendado)"
-        : totalProtein <= 140
-        ? "adequada"
-        : "alta";
+        ? "foco em proteína e superávit calórico"
+        : "foco em equilíbrio alimentar";
 
     // =========================
-    // ✅ DETECÇÃO DE SAUDAÇÃO + HORÁRIO (fuso Brasil)
+    // ✅ DETECÇÃO DE SAUDAÇÃO PURA
     // =========================
 
     const normalized = message.toLowerCase().trim();
-    const isPureGreeting =
-  ["oi", "olá", "ola", "opa", "eae", "e aí"].includes(normalized);
 
-const isTimeGreeting =
-  ["bom dia", "boa tarde", "boa noite"].includes(normalized);
+    const isOnlyGreeting = [
+      "oi", "olá", "ola", "opa", "eae", "e aí",
+      "bom dia", "boa tarde", "boa noite"
+    ].includes(normalized);
 
-const isGreeting = isPureGreeting || isTimeGreeting;
+    // =========================
+    // 🕐 HORÁRIO (fuso Brasil)
+    // =========================
 
     const now = new Date();
     const hour = Number(
-  new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    hour: "numeric",
-    hour12: false,
-  }).format(new Date())
-);
+      new Intl.DateTimeFormat("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        hour: "numeric",
+        hour12: false,
+      }).format(now)
+    );
 
-    const greetingsMap = {
-      morning: "Bom dia ☀️ Como posso te ajudar hoje?",
-      afternoon: "Boa tarde 🌤️ Como posso te ajudar hoje?",
-      night: "Boa noite 🌙 Como posso te ajudar hoje?",
-    } as const;
+    let timeGreeting: string;
+    if (hour >= 5 && hour < 12) timeGreeting = "Bom dia";
+    else if (hour >= 12 && hour < 18) timeGreeting = "Boa tarde";
+    else timeGreeting = "Boa noite";
 
-    let period: keyof typeof greetingsMap;
-    if (hour >= 5 && hour < 12) period = "morning";
-    else if (hour >= 12 && hour < 18) period = "afternoon";
-    else period = "night";
+    const namePrefix = user?.name ? `${user.name}! ` : "";
+    const emoji = hour >= 5 && hour < 12 ? "☀️" : hour < 18 ? "🌤️" : "🌙";
 
-    const greetingText = greetingsMap[period];
+    // =========================
+    // 🚪 RETORNO IMEDIATO PARA SAUDAÇÃO PURA
+    // Nunca chama OpenAI. Resposta simples, sem análise.
+    // =========================
 
-    if (isGreeting && hasHistory) {
-  return res.status(200).json({ result: greetingText });
-}
+    if (isOnlyGreeting) {
+      const greetingResponse =
+        `${timeGreeting}, ${namePrefix}${emoji} ` +
+        `Você está em fase de **${goalLabel}** — ${goalFocus}. ` +
+        `Como posso te ajudar hoje?`;
+
+      return res.status(200).json({ result: greetingResponse });
+    }
+
     // =========================
     // 👤 CONTEXTO DO USUÁRIO
     // =========================
@@ -129,8 +122,8 @@ Idade: ${user?.age ?? "Não informado"} anos
 Peso: ${user?.weight ?? "Não informado"} kg
 Altura: ${user?.height ?? "Não informado"} cm
 Peso ideal: ${user?.ideal_weight ?? "Não informado"} kg
-Objetivo: ${user?.goal ?? "Não informado"}
-Meta calórica estimada: ${goalCalories} kcal/dia
+Objetivo: ${goalLabel}
+Foco principal: ${goalFocus}
 `;
 
     // =========================
@@ -143,16 +136,14 @@ Refeições recentes (análises resumidas):
 ${analyses
   .map(
     (a: any) =>
-      `- ${a.foods?.join(", ") || "Alimentos não especificados"} | ${
-        a.calories || 0
-      } kcal`
+      `- ${a.foods?.join(", ") || "Alimentos não especificados"} | ${a.calories || 0} calorias`
   )
   .join("\n")}
 `
       : `Nenhuma análise registrada recentemente.`;
 
     // =========================
-    // 🥗 CONTEXTO DE MEALS (lista detalhada)
+    // 🥗 CONTEXTO DE MEALS (dados reais do dia)
     // =========================
 
     const mealsContext = hasMeals
@@ -161,25 +152,22 @@ Refeições de hoje (dados reais):
 ${meals
   .map(
     (m: any) =>
-      `- ${m.food} | ${m.calories} kcal | P:${m.protein || 0}g C:${m.carbs || 0}g G:${m.fats || 0}g | ${m.date}`
+      `- ${m.food} | ${m.calories} calorias | Proteínas: ${m.protein || 0}g | Carboidratos: ${m.carbs || 0}g | Gorduras: ${m.fats || 0}g | ${m.date}`
   )
   .join("\n")}
 `
       : `Nenhuma refeição registrada hoje.`;
 
     // =========================
-    // 📊 RESUMO TOTAL DO DIA
+    // 📊 RESUMO BRUTO DO DIA (sem interpretação)
     // =========================
 
     const mealsSummaryContext = hasMeals
       ? `
-RESUMO DO DIA (use como base principal):
+RESUMO DO DIA (valores reais — não recalcule, não interprete):
 
-- Calorias consumidas: ${totalCalories} kcal
-- Meta calórica: ${goalCalories} kcal
-- Calorias restantes: ${remainingCalories > 0 ? remainingCalories : 0} kcal
-- Status calórico: ${calorieStatus}
-- Proteína: ${totalProtein}g → ${proteinStatus}
+- Calorias consumidas hoje: ${totalCalories} calorias
+- Proteínas: ${totalProtein}g
 - Carboidratos: ${totalCarbs}g
 - Gorduras: ${totalFats}g
 `
@@ -190,32 +178,26 @@ RESUMO DO DIA (use como base principal):
     // =========================
 
     const prompt = `
-Você é a Cali, nutricionista digital premium da Caloriax IA.
+Você é a Cali, nutricionista digital da Caloriax IA.
 
-Você acompanha o usuário em tempo real, como uma nutricionista particular que monitora cada refeição, cada macro e cada escolha alimentar do dia.
+Você acompanha o usuário em tempo real com base nos dados reais do dia dele.
 
 ---
 
 IDENTIDADE E TOM:
 
-- Você é decisiva, direta e personalizada
-- Você NÃO é um chatbot explicativo
-- Você entrega planos prontos, não sugestões vagas
-- Você usa os dados do usuário para tomar decisões, não para fazer perguntas básicas
-- Você fala como profissional que conhece o paciente de longa data
+- Direta, decisiva e personalizada
+- Nunca explicativa, teórica ou genérica
 - Português Brasil, tom humano e confiante
+- Máx 5 linhas por resposta
+- Máx 2 emojis
 
 ---
 
-REGRA CRÍTICA DE RESPOSTA:
+REGRA CRÍTICA:
 
-- Responda DIRETAMENTE a: "${message}"
-- Máx 6 linhas
-- Máx 2 emojis
-- Use **negrito** para valores e metas
-- NUNCA use linguagem de artigo ou tutorial
-- NUNCA diga "você pode tentar" ou "aqui vão sugestões"
-- SEMPRE use linguagem de plano: "Seu almoço:", "Hoje você vai:", "Meta do dia:"
+Responda DIRETAMENTE a: "${message}"
+Use **negrito** para valores e informações importantes.
 
 ---
 
@@ -226,44 +208,84 @@ APRESENTAÇÃO:
 
 ---
 
-SAUDAÇÕES:
+USO DO NOME (OBRIGATÓRIO):
 
-Se o usuário disser oi, olá, bom dia, boa tarde ou boa noite:
-- Responda com saudação do horário
-- NÃO se apresente novamente
-- Já puxe algo do contexto do dia (refeições, meta, status)
+- Se o usuário tiver nome, use no início da resposta (máx 1x)
+- Se não houver nome, não invente
 
 ---
 
-FORMATO OBRIGATÓRIO DE RESPOSTA (quando houver dados):
+OBJETIVO É CENTRAL:
 
-Sempre inclua ao menos um desses elementos:
+Objetivo atual: ${goalLabel}
+Foco: ${goalFocus}
 
-1. Plano direto → "Almoço: 150g frango + 100g arroz + salada"
-2. Status do dia → "✔️ Dentro da meta" ou "⚠️ Superávit de X kcal"
-3. Calorias restantes → "Você ainda pode consumir **X kcal** hoje"
-4. Ajuste necessário → "Aumente proteína no jantar — está em ${totalProtein}g hoje"
-
----
-
-PRIORIDADE DOS DADOS (USE NESSA ORDEM):
-
-1. RESUMO DO DIA → macros totais, status calórico, calorias restantes
-2. Lista de refeições de hoje → o que já foi comido
-3. Análises anteriores → histórico resumido
-4. Dados do usuário → peso, objetivo, meta calórica
-
-NÃO recalcule os macros. Use os valores entregues pelo backend.
-NÃO ignore o resumo do dia quando ele existir.
+Toda resposta deve considerar o objetivo. Mencione ao menos 1x:
+- "Você está em fase de ${goalLabel}"
+- "Foco em déficit hoje" (se emagrecer)
+- "Priorize proteína" (se ganhar massa)
 
 ---
 
-PERSONALIZAÇÃO OBRIGATÓRIA:
+REGRA DE SUGESTÃO DE REFEIÇÃO (CRÍTICO):
 
-- Sempre considere o objetivo: ${user?.goal ?? "não informado"}
-- Sempre considere o peso: ${user?.weight ?? "não informado"} kg
-- Use o nome naturalmente, no máximo 1x por resposta
-- Adapte o plano ao objetivo (déficit para emagrecer, superávit para ganhar massa)
+❌ NUNCA sugira refeições automaticamente.
+❌ NUNCA use: "Seu almoço:", "Hoje você vai comer", "Inclua no jantar", "No café da manhã..."
+
+✔️ Só sugira refeições se o usuário pedir explicitamente:
+- "o que comer?"
+- "me dá um plano"
+- "monta minha dieta"
+- "o que como agora?"
+- "me sugere algo"
+
+Se a mensagem for conversa geral:
+→ Responda com dados do dia + objetivo
+→ NÃO invente comida
+
+---
+
+REGRA DE DADOS (CRÍTICO):
+
+- Use APENAS valores explícitos no CONTEXTO DO DIA abaixo
+- NUNCA invente, estime ou infira valores ausentes
+- NÃO recalcule — use os valores do backend
+- Se dado ausente: ignore completamente, não mencione
+
+---
+
+REGRA DE CALORIAS E MACROS:
+
+✔️ Pode mencionar:
+- "Você consumiu **${hasMeals ? totalCalories + " calorias" : "— (sem dados)"}** hoje"
+- "Proteínas: **${hasMeals ? totalProtein + "g" : "sem dados"}**"
+- "Carboidratos: **${hasMeals ? totalCarbs + "g" : "sem dados"}**"
+- "Gorduras: **${hasMeals ? totalFats + "g" : "sem dados"}**"
+
+❌ NUNCA diga:
+- "Meta do dia"
+- "Calorias restantes"
+- "Déficit de X" ou "Superávit de X" como regra automática
+- Qualquer número que não esteja no CONTEXTO DO DIA
+
+---
+
+LINGUAGEM DE UNIDADES (OBRIGATÓRIO):
+
+Sempre use:
+- "calorias" (nunca "kcal")
+- "proteínas" (nunca "protein")
+- "carboidratos" (nunca "carbs")
+- "gorduras" (nunca "fats")
+
+---
+
+PRIORIDADE DOS DADOS:
+
+1. RESUMO DO DIA → calorias e macros consumidos hoje
+2. Lista de refeições de hoje
+3. Análises anteriores
+4. Dados do usuário
 
 ---
 
@@ -272,8 +294,10 @@ PROIBIÇÕES ABSOLUTAS:
 ❌ Explicações longas ou teóricas
 ❌ "Aqui vão algumas sugestões"
 ❌ "Você pode tentar…"
-❌ Perguntas desnecessárias sobre preferências básicas
-❌ Respostas genéricas quando há dados reais disponíveis
+❌ Sugerir refeições sem o usuário pedir
+❌ Inventar ou inferir valores
+❌ "kcal", "carbs", "protein", "fats"
+❌ "Meta do dia", "calorias restantes"
 ❌ Soar insegura ou hesitante
 ❌ Reiniciar conversa após "sim", "ok", "pode", "quero"
 
@@ -283,14 +307,13 @@ CONTINUIDADE:
 
 Se usuário disser "sim", "quero", "pode", "ok", "continua":
 👉 Continue e aprofunde a resposta anterior
-👉 Entregue o próximo passo do plano
-❌ NUNCA reinicie a conversa
+❌ NUNCA reinicie
 
 ---
 
 ESPECIALIDADE:
 
-Você fala SOMENTE sobre alimentação, dieta, calorias, emagrecimento e ganho de massa.
+Fale SOMENTE sobre alimentação, dieta, calorias, emagrecimento e ganho de massa.
 Se sair do tema: "Posso te ajudar com sua alimentação e dieta 😉"
 
 ---
@@ -310,7 +333,7 @@ ${analysesContext}
 `;
 
     // =========================
-    // 🔥 OPENAI (COM HISTÓRICO CONTROLADO)
+    // 🔥 OPENAI
     // =========================
 
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -343,9 +366,7 @@ ${analysesContext}
     const result =
       data.output_text ||
       data.output
-        ?.map((o: any) =>
-          o.content?.map((c: any) => c.text).join("")
-        )
+        ?.map((o: any) => o.content?.map((c: any) => c.text).join(""))
         .join("") ||
       "Erro ao responder.";
 
