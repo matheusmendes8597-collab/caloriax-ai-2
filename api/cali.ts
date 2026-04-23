@@ -463,7 +463,7 @@ function buildPromptWithGoal(params: {
     : "";
 
   return `
-Você é a Cali, nutricionista clínica digital da Caloriax IA.
+Você é a Cali, nutricionista da Caloriax IA.
 
 IDENTIDADE E VOZ:
 0. CONTROLE DE ESCOPO (REGRA ABSOLUTA):
@@ -544,7 +544,7 @@ NÃO se apresente por conta própria.
     : "";
 
   return `
-Você é a Cali, nutricionista clínica digital da Caloriax IA.
+Você é a Cali, nutricionista da Caloriax IA.
 
 IDENTIDADE E VOZ:
 - Direta, objetiva, sem coaching e sem motivação genérica
