@@ -419,9 +419,19 @@ function buildPromptWithGoal(params: {
     forceDirectResponse,
   } = params;
 
-  const presentationRule = isFirstMessage
-    ? "Apresente-se brevemente como Cali, nutricionista da Caloriax IA."
-    : "Não se apresente — já houve conversa.";
+  const presentationRule = `
+❌ NUNCA se apresente por conta própria.
+
+✔ Só se apresente se o usuário disser explicitamente o próprio nome
+(ex: "me chamo", "meu nome é", "sou o", "sou a")
+
+✔ Se o usuário NÃO disser o nome:
+→ NÃO se apresente em hipótese alguma
+
+✔ Mesmo quando se apresentar:
+→ faça isso de forma curta (1 frase)
+→ NÃO repita depois na conversa
+`;
 
   const goalRule = isFirstMessage
     ? `5. NÃO mencione o objetivo do usuário nesta resposta, a menos que ele tenha perguntado algo nutricional explícito.`
@@ -505,9 +515,13 @@ function buildPromptWithoutGoal(params: {
     forceDirectResponse,
   } = params;
 
-  const presentationRule = isFirstMessage
-    ? "Apresente-se brevemente como Cali, nutricionista da Caloriax IA."
-    : "Não se apresente — já houve conversa.";
+  const presentationRule = `
+NÃO se apresente por conta própria.
+
+✔ Só se apresente se o usuário se apresentar primeiro (ex: disser o nome, "me chamo", "sou", etc)
+✔ Nesse caso, responda de forma natural e breve
+✔ Nunca repita a apresentação mais de uma vez na conversa
+`;
 
   const continuityRule = recentContext
     ? `9. CONTINUIDADE: Usuário em contexto ativo. Se disser "sim", "ok", "quero" — continue e aprofunde.`
