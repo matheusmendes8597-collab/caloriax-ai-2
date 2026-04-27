@@ -8,6 +8,8 @@ export const config = {
 
 declare const process: any;
 
+const SECRET = process.env.INTERNAL_API_SECRET;
+
 // =========================
 // 🕐 HORÁRIO DO BRASIL (UTC-safe)
 // =========================
@@ -604,6 +606,10 @@ export default async function handler(req: any, res: any) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST")
     return res.status(405).json({ error: "Método não permitido" });
+
+  if (req.headers.authorization !== SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
   try {
     const body = req.body || {};
