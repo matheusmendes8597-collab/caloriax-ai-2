@@ -155,6 +155,23 @@ function isEchoLikely(message: string): boolean {
 }
 
 // =========================
+// 📅 FILTRO DE DATA — HOJE
+// =========================
+
+function isToday(dateString: string): boolean {
+  if (!dateString) return false;
+
+  const today = new Date();
+  const date = new Date(dateString);
+
+  return (
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear()
+  );
+}
+
+// =========================
 // 📊 CÁLCULO DE MACROS
 // =========================
 
@@ -624,14 +641,19 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // 📅 Filtrar apenas refeições de hoje
+    const mealsToday = meals.filter((m: any) =>
+      isToday(m.created_at || m.date || m.timestamp)
+    );
+
     // 🍽️ Interceptar pergunta sobre última refeição
     if (isLastMealQuestion(message)) {
-      if (meals.length === 0) {
+      if (mealsToday.length === 0) {
         return res.status(200).json({
           result: "Você ainda não registrou nenhuma refeição hoje.",
         });
       }
-      const lastMeal = meals[meals.length - 1];
+      const lastMeal = mealsToday[mealsToday.length - 1];
       const foodName = lastMeal?.food ?? "um alimento";
       return res.status(200).json({
         result: `Sua última refeição foi **${foodName}**, mais cedo hoje.`,
@@ -654,9 +676,9 @@ export default async function handler(req: any, res: any) {
 
     const { label: goalLabel } = translateGoal(user?.goal);
 
-    const hasMeals = meals.length > 0;
+    const hasMeals = mealsToday.length > 0;
     const hasAnalyses = analyses && analyses.length > 0;
-    const macros = calcMacros(meals);
+    const macros = calcMacros(mealsToday);
     const recentContext = hasRecentContext(history);
     const safeHistory = recentContext ? history.slice(-6) : [];
     const isFirstMessage = history.length === 0;
@@ -680,7 +702,7 @@ export default async function handler(req: any, res: any) {
       const nutritionContext = buildContextWithGoal({
         user,
         goalLabel,
-        meals,
+        meals: mealsToday,
         hasMeals,
         macros,
         analyses,
@@ -699,7 +721,7 @@ export default async function handler(req: any, res: any) {
     } else {
       const nutritionContext = buildContextWithoutGoal({
         user,
-        meals,
+        meals: mealsToday,
         hasMeals,
         macros,
         analyses,
