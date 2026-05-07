@@ -626,7 +626,6 @@ export default async function handler(req: any, res: any) {
     const body = req.body || {};
     const message = body.message;
     const user = body.user;
-    const userId = user?.id;
     const analyses = body.analyses;
     const meals = body.meals || [];
     const history = body.history || [];
@@ -788,12 +787,7 @@ export default async function handler(req: any, res: any) {
       finalResult = `Para te ajudar melhor, complete seus dados em "Meu Perfil". 😉`;
     }
 
-    const updatedMessagesUsed = user?.messages_used || 0;
-
-    return res.status(200).json({
-      result: finalResult,
-      messages_used: updatedMessagesUsed,
-    });
+    return res.status(200).json({ result: finalResult });
   } catch (error: any) {
     return res
       .status(500)
