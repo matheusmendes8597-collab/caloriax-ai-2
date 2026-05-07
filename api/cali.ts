@@ -8,10 +8,6 @@ export const config = {
 
 declare const process: any;
 
-import PocketBase from "pocketbase";
-
-const pb = new PocketBase(process.env.POCKETBASE_URL);
-
 // =========================
 // 🕐 HORÁRIO DO BRASIL (UTC-safe)
 // =========================
@@ -792,22 +788,7 @@ export default async function handler(req: any, res: any) {
       finalResult = `Para te ajudar melhor, complete seus dados em "Meu Perfil". 😉`;
     }
 
-    // 📊 Atualizar contador de mensagens no PocketBase
-    let updatedMessagesUsed = user?.messages_used || 0;
-
-    try {
-      if (userId) {
-        const userRecord = await pb.collection("users").getOne(userId);
-
-        updatedMessagesUsed = (userRecord.messages_used || 0) + 1;
-
-        await pb.collection("users").update(userId, {
-          messages_used: updatedMessagesUsed,
-        });
-      }
-    } catch (err) {
-      console.error("Erro ao atualizar contador:", err);
-    }
+    const updatedMessagesUsed = user?.messages_used || 0;
 
     return res.status(200).json({
       result: finalResult,
