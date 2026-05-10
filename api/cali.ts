@@ -614,6 +614,14 @@ function sanitizeTimeReferences(text: string): string {
 // =========================
 
 export default async function handler(req: any, res: any) {
+  const apiKey = req.headers["x-api-key"];
+
+  if (apiKey !== process.env.INTERNAL_API_SECRET) {
+    return res.status(401).json({
+      error: "Unauthorized",
+    });
+  }
+
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
