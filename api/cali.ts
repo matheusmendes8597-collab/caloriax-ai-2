@@ -597,15 +597,10 @@ ${nutritionContext}
 
 function sanitizeTimeReferences(text: string): string {
   return text
-    // "às 10:30 de hoje" → "mais cedo hoje"
     .replace(/\bàs?\s*\d{1,2}:\d{2}\s*(de hoje)?\b/g, "mais cedo hoje")
-    // "10:30" solto → "recentemente"
     .replace(/\b\d{1,2}:\d{2}\b/g, "recentemente")
-    // "10h" ou "10 h" → removido
     .replace(/\b\d{1,2}\s?h\b/g, "")
-    // "10 horas" ou "10horas" → removido
     .replace(/\b\d{1,2}\s?horas\b/gi, "")
-    // fallback final para qualquer HH:MM residual
     .replace(/\b\d{1,2}:\d{2}\b/g, "");
 }
 
@@ -614,9 +609,18 @@ function sanitizeTimeReferences(text: string): string {
 // =========================
 
 export default async function handler(req: any, res: any) {
+  const apiKey = req.headers['x-api-key'];
+
+  if (apiKey !== process.env.INTERNAL_API_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, x-api-key"
+  );
 
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST")
@@ -633,7 +637,6 @@ export default async function handler(req: any, res: any) {
     if (!message)
       return res.status(400).json({ error: "Mensagem é obrigatória" });
 
-    // 🚫 Interceptar perguntas de horário antes de qualquer processamento
     if (isTimeQuestion(message)) {
       return res.status(200).json({
         result:
@@ -641,12 +644,10 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 📅 Filtrar apenas refeições de hoje
     const mealsToday = meals.filter((m: any) =>
       isToday(m.created_at || m.date || m.timestamp)
     );
 
-    // 🍽️ Interceptar pergunta sobre última refeição
     if (isLastMealQuestion(message)) {
       if (mealsToday.length === 0) {
         return res.status(200).json({
@@ -768,10 +769,8 @@ export default async function handler(req: any, res: any) {
 
     let finalResult = result;
 
-    // 🔒 Sanitizar todas as referências de horário
     finalResult = sanitizeTimeReferences(finalResult);
 
-    // 🔒 Remover menções feias de data/placeholder
     finalResult = finalResult.replace(/data não disponível/gi, "");
 
     finalResult = finalResult
